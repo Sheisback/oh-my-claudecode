@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-01-11
+
+### Added
+- **Persistent Mode System** - Enhanced hook system for auto-continuation
+  - `ultrawork-state` module: Manages persistent ultrawork mode state across sessions
+  - `persistent-mode` hook: Unified Stop handler for ultrawork, ralph-loop, and todo continuation
+  - `session-start` hook: Restores persistent mode states when a new session starts
+  - Three-layer priority enforcement: Ralph Loop > Ultrawork > Todo Continuation
+
+- **Claude Code Native Hooks Integration**
+  - SessionStart hook for mode restoration on session resume
+  - Enhanced Stop hook with persistent mode detection
+  - Cross-platform support (Bash for Unix, Node.js for Windows)
+
+- **Popular Plugin Patterns Module** (`plugin-patterns`)
+  - Auto-format support for multiple languages (TypeScript, Python, Go, Rust)
+  - Lint validation with language-specific linters
+  - Conventional commit message validation
+  - TypeScript type checking integration
+  - Test runner detection and execution
+  - Pre-commit validation workflow
+
+### Changed
+- **Bridge Module** - Added persistent-mode and session-start hook handlers
+- **Keyword Detector** - Now activates ultrawork state when ultrawork keyword is detected
+- **Settings Configuration** - Added SessionStart hook configuration for both Bash and Node.js
+
+### Technical Details
+- New hooks: `persistent-mode.sh/.mjs`, `session-start.sh/.mjs`
+- State files: `.sisyphus/ultrawork-state.json`, `~/.claude/ultrawork-state.json`
+- Ultrawork mode now persists across stop attempts when todos remain incomplete
+- Ralph-loop continues with iteration tracking and reinforcement messages
+
 ## [1.9.0] - 2026-01-10
 
 ### Changed
@@ -58,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[1.9.0]: https://github.com/code-yeongyu/Oh-My-ClaudeCode-Sisyphus/compare/v1.8.0...v1.9.0
-[1.8.0]: https://github.com/code-yeongyu/Oh-My-ClaudeCode-Sisyphus/compare/v1.7.0...v1.8.0
-[1.7.0]: https://github.com/code-yeongyu/Oh-My-ClaudeCode-Sisyphus/releases/tag/v1.7.0
+[1.10.0]: https://github.com/Yeachan-Heo/oh-my-claude-sisyphus/compare/v1.9.0...v1.10.0
+[1.9.0]: https://github.com/Yeachan-Heo/oh-my-claude-sisyphus/compare/v1.8.0...v1.9.0
+[1.8.0]: https://github.com/Yeachan-Heo/oh-my-claude-sisyphus/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/Yeachan-Heo/oh-my-claude-sisyphus/releases/tag/v1.7.0

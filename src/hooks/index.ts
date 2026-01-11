@@ -349,3 +349,56 @@ export {
   REMINDER_MESSAGE,
   type AgentUsageState
 } from './agent-usage-reminder/index.js';
+
+export {
+  // Ultrawork State (Persistent Mode)
+  activateUltrawork,
+  deactivateUltrawork,
+  readUltraworkState,
+  writeUltraworkState,
+  incrementReinforcement,
+  shouldReinforceUltrawork,
+  getUltraworkPersistenceMessage,
+  createUltraworkStateHook,
+  type UltraworkState
+} from './ultrawork-state/index.js';
+
+export {
+  // Persistent Mode (Unified Stop Handler)
+  checkPersistentModes,
+  createHookOutput,
+  type PersistentModeResult
+} from './persistent-mode/index.js';
+
+export {
+  // Plugin Patterns (Popular Community Patterns)
+  getFormatter,
+  isFormatterAvailable,
+  formatFile,
+  getLinter,
+  lintFile,
+  validateCommitMessage,
+  runTypeCheck,
+  runTests,
+  runPreCommitChecks,
+  getPreCommitReminderMessage,
+  getAutoFormatMessage,
+  type FormatConfig,
+  type LintConfig,
+  type CommitConfig,
+  type PreCommitResult
+} from './plugin-patterns/index.js';
+
+export {
+  // Ralph Verifier (Oracle-verified completion)
+  readVerificationState,
+  writeVerificationState,
+  clearVerificationState,
+  startVerification,
+  recordOracleFeedback,
+  getOracleVerificationPrompt,
+  getOracleRejectionContinuationPrompt,
+  detectOracleApproval,
+  detectOracleRejection,
+  type VerificationState
+} from './ralph-verifier/index.js';

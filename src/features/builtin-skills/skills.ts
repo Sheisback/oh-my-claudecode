@@ -375,18 +375,58 @@ If project has build/test commands, run them at task completion.
 
 ## Phase 3 - Completion
 
-A task is complete when:
+### Self-Check Criteria:
 - [ ] All planned todo items marked done
 - [ ] Diagnostics clean on changed files
 - [ ] Build passes (if applicable)
 - [ ] User's original request fully addressed
 
-If verification fails:
+### MANDATORY: Oracle Verification Before Completion
+
+**NEVER declare a task complete without Oracle verification.**
+
+Claude models are prone to premature completion claims. Before saying "done", you MUST:
+
+1. **Self-check passes** (all criteria above)
+
+2. **Invoke Oracle for verification**:
+\\\`\\\`\\\`
+Task(subagent_type="oracle", prompt="VERIFY COMPLETION REQUEST:
+Original task: [describe the original request]
+What I implemented: [list all changes made]
+Verification done: [list tests run, builds checked]
+
+Please verify:
+1. Does this FULLY address the original request?
+2. Any obvious bugs or issues?
+3. Any missing edge cases?
+4. Code quality acceptable?
+
+Return: APPROVED or REJECTED with specific reasons.")
+\\\`\\\`\\\`
+
+3. **Based on Oracle Response**:
+   - **APPROVED**: You may now declare task complete
+   - **REJECTED**: Address ALL issues raised, then re-verify with Oracle
+
+### Why This Matters
+
+This verification loop catches:
+- Partial implementations ("I'll add that later")
+- Missed requirements (things you forgot)
+- Subtle bugs (Oracle's fresh eyes catch what you missed)
+- Scope reduction ("simplified version" when full was requested)
+
+**NO SHORTCUTS. ORACLE MUST APPROVE BEFORE COMPLETION.**
+
+### If verification fails:
 1. Fix issues caused by your changes
 2. Do NOT fix pre-existing issues unless asked
-3. Report: "Done. Note: found N pre-existing lint errors unrelated to my changes."
+3. Re-verify with Oracle after fixes
+4. Report: "Done. Note: found N pre-existing lint errors unrelated to my changes."
 
 ### Before Delivering Final Answer:
+- Ensure Oracle has approved
 - Cancel ALL running background tasks: \\\`TaskOutput for all background tasks\\\`
 - This conserves resources and ensures clean workflow completion
 
@@ -1562,18 +1602,58 @@ If project has build/test commands, run them at task completion.
 
 ## Phase 3 - Completion
 
-A task is complete when:
+### Self-Check Criteria:
 - [ ] All planned todo items marked done
 - [ ] Diagnostics clean on changed files
 - [ ] Build passes (if applicable)
 - [ ] User's original request fully addressed
 
-If verification fails:
+### MANDATORY: Oracle Verification Before Completion
+
+**NEVER declare a task complete without Oracle verification.**
+
+Claude models are prone to premature completion claims. Before saying "done", you MUST:
+
+1. **Self-check passes** (all criteria above)
+
+2. **Invoke Oracle for verification**:
+\\\`\\\`\\\`
+Task(subagent_type="oracle", prompt="VERIFY COMPLETION REQUEST:
+Original task: [describe the original request]
+What I implemented: [list all changes made]
+Verification done: [list tests run, builds checked]
+
+Please verify:
+1. Does this FULLY address the original request?
+2. Any obvious bugs or issues?
+3. Any missing edge cases?
+4. Code quality acceptable?
+
+Return: APPROVED or REJECTED with specific reasons.")
+\\\`\\\`\\\`
+
+3. **Based on Oracle Response**:
+   - **APPROVED**: You may now declare task complete
+   - **REJECTED**: Address ALL issues raised, then re-verify with Oracle
+
+### Why This Matters
+
+This verification loop catches:
+- Partial implementations ("I'll add that later")
+- Missed requirements (things you forgot)
+- Subtle bugs (Oracle's fresh eyes catch what you missed)
+- Scope reduction ("simplified version" when full was requested)
+
+**NO SHORTCUTS. ORACLE MUST APPROVE BEFORE COMPLETION.**
+
+### If verification fails:
 1. Fix issues caused by your changes
 2. Do NOT fix pre-existing issues unless asked
-3. Report: "Done. Note: found N pre-existing lint errors unrelated to my changes."
+3. Re-verify with Oracle after fixes
+4. Report: "Done. Note: found N pre-existing lint errors unrelated to my changes."
 
 ### Before Delivering Final Answer:
+- Ensure Oracle has approved
 - Cancel ALL running background tasks: \\\`TaskOutput for all background tasks\\\`
 - This conserves resources and ensures clean workflow completion
 
@@ -1691,19 +1771,43 @@ If the user's approach seems problematic:
 };
 
 /**
- * Ralph Loop skill - self-referential completion loop
+ * Ralph Loop skill - self-referential completion loop with oracle verification
  */
 const ralphLoopSkill: BuiltinSkill = {
   name: 'ralph-loop',
-  description: 'Self-referential loop until task completion',
+  description: 'Self-referential loop until task completion with oracle verification',
   template: `[RALPH LOOP - ITERATION {{ITERATION}}/{{MAX}}]
 
 Your previous attempt did not output the completion promise. Continue working on the task.
 
-IMPORTANT:
+## COMPLETION REQUIREMENTS
+
+Before claiming completion, you MUST:
+1. Verify ALL requirements from the original task are met
+2. Ensure no partial implementations
+3. Check that code compiles/runs without errors
+4. Verify tests pass (if applicable)
+
+## ORACLE VERIFICATION (MANDATORY)
+
+When you believe the task is complete:
+1. **First**, spawn Oracle to verify your work:
+   \\\`\\\`\\\`
+   Task(subagent_type="oracle", prompt="Verify this implementation is complete: [describe what you did]")
+   \\\`\\\`\\\`
+
+2. **Wait for Oracle's assessment**
+
+3. **If Oracle approves**: Output \\\`<promise>{{PROMISE}}</promise>\\\`
+4. **If Oracle finds issues**: Fix them, then repeat verification
+
+DO NOT output the completion promise without Oracle verification.
+
+## INSTRUCTIONS
+
 - Review your progress so far
-- Continue from where you left off  
-- When FULLY complete, output: <promise>{{PROMISE}}</promise>
+- Continue from where you left off
+- When FULLY complete AND Oracle verified, output: <promise>{{PROMISE}}</promise>
 - Do not stop until the task is truly done
 
 Original task:
@@ -2093,6 +2197,35 @@ Write these criteria explicitly. Share with user if scope is non-trivial.
 | Skipping test execution | Tests exist to be RUN, not just written |
 
 **CLAIM NOTHING WITHOUT PROOF. EXECUTE. VERIFY. SHOW EVIDENCE.**
+
+## ORACLE VERIFICATION (MANDATORY BEFORE COMPLETION)
+
+Before declaring ANY task complete, you MUST get Oracle verification:
+
+### Step 1: Self-Check
+- All todo items marked complete?
+- All requirements from original request met?
+- Build passes? Tests pass?
+- Manual verification done?
+
+### Step 2: Oracle Review
+\\\`\\\`\\\`
+Task(subagent_type="oracle", prompt="VERIFY COMPLETION: [Task description]. I have completed: [list what you did]. Please verify: 1) All requirements met, 2) No obvious bugs, 3) Code quality acceptable. Return APPROVED or REJECTED with reasons.")
+\\\`\\\`\\\`
+
+### Step 3: Based on Oracle Response
+- **If APPROVED**: You may declare task complete
+- **If REJECTED**: Address ALL issues raised, then re-verify with Oracle
+- **Never skip Oracle**: Even if you're confident, get the second opinion
+
+### Why This Matters
+Claude models tend to claim completion prematurely. Oracle provides an independent verification layer that catches:
+- Partial implementations
+- Missed requirements
+- Subtle bugs
+- Edge cases
+
+**NO COMPLETION WITHOUT ORACLE APPROVAL.**
 
 ## ZERO TOLERANCE FAILURES
 - **NO Scope Reduction**: Never make "demo", "skeleton", "simplified", "basic" versions - deliver FULL implementation

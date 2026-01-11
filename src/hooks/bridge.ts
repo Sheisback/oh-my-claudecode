@@ -16,6 +16,8 @@
 import { detectKeywordsWithType, extractPromptText, removeCodeBlocks, type DetectedKeyword } from './keyword-detector/index.js';
 import { readRalphState, incrementRalphIteration, clearRalphState, detectCompletionPromise, type RalphLoopState } from './ralph-loop/index.js';
 import { checkIncompleteTodos } from './todo-continuation/index.js';
+import { checkPersistentModes, createHookOutput } from './persistent-mode/index.js';
+import { activateUltrawork, readUltraworkState } from './ultrawork-state/index.js';
 import {
   ULTRAWORK_MESSAGE,
   ULTRATHINK_MESSAGE,
@@ -72,6 +74,8 @@ export type HookType =
   | 'keyword-detector'
   | 'stop-continuation'
   | 'ralph-loop'
+  | 'persistent-mode'
+  | 'session-start'
   | 'pre-tool-use'
   | 'post-tool-use';
 
@@ -97,6 +101,7 @@ function getPromptText(input: HookInput): string {
 /**
  * Process keyword detection hook
  * Detects ultrawork/ultrathink/search/analyze keywords and returns injection message
+ * Also activates persistent ultrawork state when ultrawork keyword is detected
  */
 function processKeywordDetector(input: HookInput): HookOutput {
   const promptText = getPromptText(input);
@@ -121,6 +126,11 @@ function processKeywordDetector(input: HookInput): HookOutput {
   const hasAnalyze = keywords.some(k => k.type === 'analyze');
 
   if (hasUltrawork) {
+    // Activate persistent ultrawork state
+    const sessionId = input.sessionId;
+    const directory = input.directory || process.cwd();
+    activateUltrawork(promptText, sessionId, directory);
+
     return {
       continue: true,
       message: ULTRAWORK_MESSAGE
@@ -242,6 +252,74 @@ ${newState.prompt}`;
 }
 
 /**
+ * Process persistent mode hook (enhanced stop continuation)
+ * Unified handler for ultrawork, ralph-loop, and todo-continuation
+ */
+async function processPersistentMode(input: HookInput): Promise<HookOutput> {
+  const sessionId = input.sessionId;
+  const directory = input.directory || process.cwd();
+
+  const result = await checkPersistentModes(sessionId, directory);
+  return createHookOutput(result);
+}
+
+/**
+ * Process session start hook
+ * Restores persistent mode states and injects context if needed
+ */
+async function processSessionStart(input: HookInput): Promise<HookOutput> {
+  const sessionId = input.sessionId;
+  const directory = input.directory || process.cwd();
+
+  const messages: string[] = [];
+
+  // Check for active ultrawork state
+  const ultraworkState = readUltraworkState(directory);
+  if (ultraworkState?.active) {
+    messages.push(`<session-restore>
+
+[ULTRAWORK MODE RESTORED]
+
+You have an active ultrawork session from ${ultraworkState.started_at}.
+Original task: ${ultraworkState.original_prompt}
+
+Continue working in ultrawork mode until all tasks are complete.
+
+</session-restore>
+
+---
+
+`);
+  }
+
+  // Check for incomplete todos
+  const todoResult = await checkIncompleteTodos(sessionId, directory);
+  if (todoResult.count > 0) {
+    messages.push(`<session-restore>
+
+[PENDING TASKS DETECTED]
+
+You have ${todoResult.count} incomplete tasks from a previous session.
+Please continue working on these tasks.
+
+</session-restore>
+
+---
+
+`);
+  }
+
+  if (messages.length > 0) {
+    return {
+      continue: true,
+      message: messages.join('\n')
+    };
+  }
+
+  return { continue: true };
+}
+
+/**
  * Main hook processor
  * Routes to specific hook handler based on type
  */
@@ -259,6 +337,12 @@ export async function processHook(
 
       case 'ralph-loop':
         return await processRalphLoop(input);
+
+      case 'persistent-mode':
+        return await processPersistentMode(input);
+
+      case 'session-start':
+        return await processSessionStart(input);
 
       case 'pre-tool-use':
         // Pre-tool-use hooks can be extended here

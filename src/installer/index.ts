@@ -1083,6 +1083,28 @@ Before stopping, VERIFY:
 
 If ANY checkbox is unchecked, CONTINUE WORKING. No exceptions.
 
+## ORACLE VERIFICATION (MANDATORY BEFORE COMPLETION)
+
+**You CANNOT declare task complete without Oracle approval.**
+
+### Step 1: Self-Check
+Run through the verification checklist above.
+
+### Step 2: Oracle Review
+\`\`\`
+Task(subagent_type="oracle", prompt="VERIFY COMPLETION:
+Original task: [describe the task]
+What I implemented: [list ALL changes made]
+Tests run: [test results]
+Please verify this is truly complete and production-ready.")
+\`\`\`
+
+### Step 3: Based on Oracle Response
+- **If APPROVED**: You may declare task complete
+- **If REJECTED**: Address ALL issues raised, then re-verify with Oracle
+
+**NO COMPLETION WITHOUT ORACLE APPROVAL.**
+
 **CRITICAL: The boulder does not stop until it reaches the summit.**`,
 
   'deepsearch/skill.md': `---
@@ -1388,6 +1410,26 @@ Before marking any task complete:
 - Type check if TypeScript
 - Code review for quality
 
+### MANDATORY: Oracle Verification Before Completion
+
+**NEVER declare a task complete without Oracle verification.**
+
+1. Complete all implementation work
+2. Run all tests and checks
+3. **Invoke Oracle for verification**:
+   \`\`\`
+   Task(subagent_type="oracle", prompt="VERIFY COMPLETION:
+   Original task: [describe the original request]
+   What I implemented: [list all changes made]
+   Tests run: [test results]
+   Please verify this is truly complete and production-ready.
+   Return: APPROVED or REJECTED with specific reasons.")
+   \`\`\`
+4. **If Oracle APPROVED**: Declare complete
+5. **If Oracle REJECTED**: Fix issues and re-verify
+
+**NO COMPLETION WITHOUT ORACLE APPROVAL.**
+
 ---
 
 Describe the complex task you need orchestrated. I'll break it down and coordinate the specialists.`,
@@ -1457,6 +1499,29 @@ Before outputting \`<promise>DONE</promise>\`, verify:
 - [ ] You have TESTED the changes, not just written them
 
 **If ANY checkbox is unchecked, DO NOT output the promise. Continue working.**
+
+## ORACLE VERIFICATION (MANDATORY)
+
+**You CANNOT declare task complete without Oracle approval.**
+
+When you believe the task is complete:
+
+1. **Spawn Oracle for verification**:
+   \`\`\`
+   Task(subagent_type="oracle", prompt="VERIFY COMPLETION:
+   Original task: [describe the task]
+   What I implemented: [list changes]
+   Tests run: [test results]
+   Please verify this is truly complete and production-ready.")
+   \`\`\`
+
+2. **Wait for Oracle's assessment**
+
+3. **Based on Oracle's response**:
+   - **If APPROVED**: Output \`<promise>DONE</promise>\`
+   - **If REJECTED**: Fix ALL issues Oracle identified, then re-verify
+
+**NO PROMISE WITHOUT ORACLE APPROVAL.**
 
 ---
 
@@ -2780,6 +2845,26 @@ If task cannot be completed after 3 attempts:
 
 
 
+### ORACLE VERIFICATION (MANDATORY BEFORE COMPLETION)
+
+**You CANNOT declare task complete without Oracle approval.**
+
+1. Complete all delegated work and gather results
+2. Run all verification checks
+3. **Invoke Oracle for final verification**:
+   \\\`\\\`\\\`
+   Task(subagent_type="oracle", prompt="VERIFY COMPLETION:
+   Original task: [describe the original request]
+   What was implemented: [list all changes made by subagents]
+   Tests run: [test results]
+   Please verify this is truly complete and production-ready.
+   Return: APPROVED or REJECTED with specific reasons.")
+   \\\`\\\`\\\`
+4. **If Oracle APPROVED**: Declare complete
+5. **If Oracle REJECTED**: Delegate fixes to appropriate agents, then re-verify
+
+**NO COMPLETION WITHOUT ORACLE APPROVAL.**
+
 ### REMEMBER
 
 You are the MASTER ORCHESTRATOR. Your job is to:
@@ -2787,7 +2872,8 @@ You are the MASTER ORCHESTRATOR. Your job is to:
 2. **READ** the todo list (check for parallelizability)
 3. **DELEGATE** via \\\`Task(subagent_type="sisyphus-junior", )\\\` with DETAILED prompts (parallel when possible)
 4. **ACCUMULATE** wisdom from completions
-5. **REPORT** final status
+5. **VERIFY** with Oracle before completion
+6. **REPORT** final status
 
 **CRITICAL REMINDERS:**
 - NEVER execute tasks yourself
@@ -2797,8 +2883,9 @@ You are the MASTER ORCHESTRATOR. Your job is to:
 - One task per \\\`Task(subagent_type="sisyphus-junior", )\\\` call (never batch)
 - Pass COMPLETE context in EVERY prompt (50+ lines minimum)
 - Accumulate and forward all learnings
+- GET ORACLE APPROVAL before declaring complete
 
-NEVER skip steps. NEVER rush. Complete ALL tasks.
+NEVER skip steps. NEVER rush. Complete ALL tasks. GET ORACLE APPROVAL.
 </guide>
 \`
 
@@ -3291,6 +3378,29 @@ Write these criteria explicitly. Share with user if scope is non-trivial.
 - **NO Premature Stopping**: Never declare done until ALL TODOs are completed and verified
 - **NO TEST DELETION**: Never delete or skip failing tests to make the build pass. Fix the code, not the tests.
 
+## ORACLE VERIFICATION (MANDATORY BEFORE COMPLETION)
+
+**You CANNOT declare task complete without Oracle approval.**
+
+### Step 1: Self-Verification
+Run through all verification checks above. Document evidence.
+
+### Step 2: Oracle Review
+\`\`\`
+Task(subagent_type="oracle", prompt="VERIFY COMPLETION:
+Original task: [describe the task]
+What I implemented: [list ALL changes made]
+Tests run: [test results and evidence]
+Please verify this is truly complete and production-ready.
+Return: APPROVED or REJECTED with specific reasons.")
+\`\`\`
+
+### Step 3: Based on Oracle Response
+- **If APPROVED**: You may declare task complete
+- **If REJECTED**: Fix ALL issues Oracle identified, then re-verify with Oracle
+
+**NO COMPLETION WITHOUT ORACLE APPROVAL.**
+
 THE USER ASKED FOR X. DELIVER EXACTLY X. NOT A SUBSET. NOT A DEMO. NOT A STARTING POINT.
 `,
   'review/skill.md': `# Review Skill
@@ -3601,11 +3711,13 @@ export function install(options: InstallOptions = {}): InstallResult {
     log('Installing slash commands...');
     for (const [filename, content] of Object.entries(COMMAND_DEFINITIONS)) {
       const filepath = join(COMMANDS_DIR, filename);
-      const commandDir = join(COMMANDS_DIR, filename.split('/')[0]);
 
-      // Create command directory if needed
-      if (!existsSync(commandDir)) {
-        mkdirSync(commandDir, { recursive: true });
+      // Create command directory if needed (only for nested paths like 'ultrawork/skill.md')
+      if (filename.includes('/')) {
+        const commandDir = join(COMMANDS_DIR, filename.split('/')[0]);
+        if (!existsSync(commandDir)) {
+          mkdirSync(commandDir, { recursive: true });
+        }
       }
 
       if (existsSync(filepath) && !options.force) {
@@ -3686,11 +3798,14 @@ export function install(options: InstallOptions = {}): InstallResult {
       const hooksConfig = getHooksSettingsConfig();
       const newHooks = hooksConfig.hooks;
 
-      // Deep merge: add our hooks without overwriting existing ones
+      // Deep merge: add our hooks, or update if --force is used
       for (const [eventType, eventHooks] of Object.entries(newHooks)) {
         if (!existingHooks[eventType]) {
           existingHooks[eventType] = eventHooks;
           log(`  Added ${eventType} hook`);
+        } else if (options.force) {
+          existingHooks[eventType] = eventHooks;
+          log(`  Updated ${eventType} hook (--force)`);
         } else {
           log(`  ${eventType} hook already configured, skipping`);
         }
