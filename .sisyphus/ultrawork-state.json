@@ -1,0 +1,7 @@
+{
+  "active": true,
+  "started_at": "2026-01-11T08:51:48+00:00",
+  "original_prompt": "/ralph-loop \\n● Done. Now locally installed with Oracle verification.\\n\\n  Summary of what's installed:\\n  Skill: /ralph-loop\\n  Oracle Verification: ✅ Must get Oracle approval before\\n    <promise>DONE</promise>\\n  ────────────────────────────────────────\\n  Skill: /ultrawork\\n  Oracle Verification: ✅ Must get Oracle approval before declaring complete\\n  ────────────────────────────────────────\\n  Skill: /orchestrator\\n  Oracle Verification: ✅ Must get Oracle approval before final report\\n  How it works:\\n\\n  1. When you believe task is complete, invoke Oracle:\\n  Task(subagent_type=\\ ",
+  "reinforcement_count": 0,
+  "last_checked_at": "2026-01-11T08:51:48+00:00"
+}

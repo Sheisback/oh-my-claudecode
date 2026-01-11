@@ -719,6 +719,12 @@ if [ -f "$DIRECTORY/.sisyphus/ralph-state.json" ]; then
   RALPH_STATE=$(cat "$DIRECTORY/.sisyphus/ralph-state.json" 2>/dev/null)
 fi
 
+# Check for verification state (oracle verification)
+VERIFICATION_STATE=""
+if [ -f "$DIRECTORY/.sisyphus/ralph-verification.json" ]; then
+  VERIFICATION_STATE=$(cat "$DIRECTORY/.sisyphus/ralph-verification.json" 2>/dev/null)
+fi
+
 # Check for incomplete todos
 INCOMPLETE_COUNT=0
 TODOS_DIR="$HOME/.claude/todos"
@@ -751,7 +757,7 @@ for todo_path in "$DIRECTORY/.sisyphus/todos.json" "$DIRECTORY/.claude/todos.jso
   fi
 done
 
-# Priority 1: Ralph Loop
+# Priority 1: Ralph Loop with Oracle Verification
 if [ -n "$RALPH_STATE" ]; then
   IS_ACTIVE=$(echo "$RALPH_STATE" | jq -r '.active // false' 2>/dev/null)
   if [ "$IS_ACTIVE" = "true" ]; then
@@ -759,6 +765,29 @@ if [ -n "$RALPH_STATE" ]; then
     MAX_ITER=$(echo "$RALPH_STATE" | jq -r '.max_iterations // 10' 2>/dev/null)
     PROMISE=$(echo "$RALPH_STATE" | jq -r '.completion_promise // "TASK_COMPLETE"' 2>/dev/null)
     PROMPT=$(echo "$RALPH_STATE" | jq -r '.prompt // ""' 2>/dev/null)
+
+    # Check if oracle verification is pending
+    if [ -n "$VERIFICATION_STATE" ]; then
+      IS_PENDING=$(echo "$VERIFICATION_STATE" | jq -r '.pending // false' 2>/dev/null)
+      if [ "$IS_PENDING" = "true" ]; then
+        ATTEMPT=$(echo "$VERIFICATION_STATE" | jq -r '.verification_attempts // 0' 2>/dev/null)
+        MAX_ATTEMPTS=$(echo "$VERIFICATION_STATE" | jq -r '.max_verification_attempts // 3' 2>/dev/null)
+        ORIGINAL_TASK=$(echo "$VERIFICATION_STATE" | jq -r '.original_task // ""' 2>/dev/null)
+        COMPLETION_CLAIM=$(echo "$VERIFICATION_STATE" | jq -r '.completion_claim // ""' 2>/dev/null)
+        ORACLE_FEEDBACK=$(echo "$VERIFICATION_STATE" | jq -r '.oracle_feedback // ""' 2>/dev/null)
+        NEXT_ATTEMPT=$((ATTEMPT + 1))
+
+        FEEDBACK_SECTION=""
+        if [ -n "$ORACLE_FEEDBACK" ] && [ "$ORACLE_FEEDBACK" != "null" ]; then
+          FEEDBACK_SECTION="\\n**Previous Oracle Feedback (rejected):**\\n$ORACLE_FEEDBACK\\n"
+        fi
+
+        cat << EOF
+{"continue": false, "reason": "<ralph-verification>\\n\\n[ORACLE VERIFICATION REQUIRED - Attempt $NEXT_ATTEMPT/$MAX_ATTEMPTS]\\n\\nThe agent claims the task is complete. Before accepting, YOU MUST verify with Oracle.\\n\\n**Original Task:**\\n$ORIGINAL_TASK\\n\\n**Completion Claim:**\\n$COMPLETION_CLAIM\\n$FEEDBACK_SECTION\\n## MANDATORY VERIFICATION STEPS\\n\\n1. **Spawn Oracle Agent** for verification:\\n   \\\`\\\`\\\`\\n   Task(subagent_type=\\"oracle\\", prompt=\\"Verify this task completion claim...\\")\\n   \\\`\\\`\\\`\\n\\n2. **Oracle must check:**\\n   - Are ALL requirements from the original task met?\\n   - Is the implementation complete, not partial?\\n   - Are there any obvious bugs or issues?\\n   - Does the code compile/run without errors?\\n   - Are tests passing (if applicable)?\\n\\n3. **Based on Oracle's response:**\\n   - If APPROVED: Output \\\`<oracle-approved>VERIFIED_COMPLETE</oracle-approved>\\\`\\n   - If REJECTED: Continue working on the identified issues\\n\\nDO NOT output the completion promise again until Oracle approves.\\n\\n</ralph-verification>\\n\\n---\\n"}
+EOF
+        exit 0
+      fi
+    fi
 
     if [ "$ITERATION" -lt "$MAX_ITER" ]; then
       # Increment iteration
