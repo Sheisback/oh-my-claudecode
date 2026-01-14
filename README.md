@@ -56,32 +56,34 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ## Quick Install
 
-### Via Claude Code Plugin (Recommended)
+Choose **ONE** installation method below. Do not mix methods.
 
-```bash
-# In Claude Code, run:
-/plugin install oh-my-claude-sisyphus
-
-# Or from a marketplace:
-/plugin marketplace add Yeachan-Heo/oh-my-claude-sisyphus
-/plugin install oh-my-claude-sisyphus@Yeachan-Heo/oh-my-claude-sisyphus
-```
-
-This is the cleanest installation method - integrates directly with Claude Code's plugin system.
-
-### One-liner (macOS/Linux)
+### Option A: Curl One-Liner (Recommended for macOS/Linux)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claude-sisyphus/main/scripts/install.sh | bash
 ```
 
-### Via npm (All platforms including Windows)
+This installs everything to `~/.claude/` with bash hooks. **Complete and ready to use.**
+
+### Option B: Via npm (Windows & Cross-Platform)
 
 ```bash
 npm install -g oh-my-claude-sisyphus
 ```
 
-> **Windows Users**: This is the recommended installation method. Requires Node.js 20+.
+> **Windows Users**: This is the only supported installation method. Requires Node.js 20+.
+
+### Option C: Claude Code Plugin
+
+```bash
+# In Claude Code, run:
+/plugin install oh-my-claude-sisyphus
+```
+
+Uses Node.js hooks from the plugin directory. Integrates with Claude Code's plugin system.
+
+> **Important:** Plugin install and curl install are **mutually exclusive**. Using both will cause hook conflicts. Choose one method only.
 
 ### Manual Install (macOS/Linux)
 
@@ -94,22 +96,39 @@ chmod +x scripts/install.sh
 
 ---
 
-## 🎯 After Installation: Run /sisyphus-default
+## 🎯 REQUIRED: Run /sisyphus-default for Best Performance
 
-**For best performance**, run this command in Claude Code after installation:
+**After ANY installation method**, run this command in Claude Code:
 
 ```
 /sisyphus-default
 ```
 
-This command will:
-1. ✅ Update `~/.claude/CLAUDE.md` with the latest Sisyphus configuration
-2. ✅ Install hook scripts to `~/.claude/hooks/`
-3. ✅ Configure 19 agents with smart model routing
-4. ✅ Enable keyword detection (ultrawork, search, analyze modes)
+### Why This Matters
 
-> **Note:** If you installed via the **curl one-liner**, this is already done automatically.
-> For **plugin** or **npm** installs, running `/sisyphus-default` ensures full configuration.
+Without `/sisyphus-default`, Claude operates with basic capabilities. Running it enables:
+
+| Feature | Without | With `/sisyphus-default` |
+|---------|---------|--------------------------|
+| Agent delegation | Manual only | Automatic based on task |
+| Keyword detection | Disabled | ultrawork, search, analyze |
+| Todo continuation | Basic | Enforced completion |
+| Model routing | Default | Smart tier selection |
+| Skill composition | None | Auto-combines skills |
+
+### What It Does
+
+1. ✅ Updates `~/.claude/CLAUDE.md` with full Sisyphus orchestration prompt
+2. ✅ Configures 19 agents with intelligent model routing
+3. ✅ Enables magic keyword detection (ultrawork, search, analyze)
+4. ✅ Activates continuation enforcement (tasks complete before stopping)
+5. ✅ Sets up skill composition (sisyphus + ultrawork + git-master, etc.)
+
+### When to Run It
+
+- **First time**: Always run after installation
+- **After updates**: Run `/sisyphus-default` to get latest configuration
+- **Different machines**: Run on each machine where you use Claude Code
 
 ---
 
