@@ -3,7 +3,6 @@
  * Plugin Post-Install Setup
  *
  * Configures HUD statusline when plugin is installed.
- * This runs after `claude plugin install oh-my-claude-sisyphus`
  */
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, chmodSync } from 'node:fs';
@@ -40,7 +39,7 @@ import { join } from "node:path";
 async function main() {
   const home = homedir();
 
-  // 1. Try plugin cache first (npm package name: oh-my-claude-sisyphus)
+  // 1. Try plugin cache first (npm package: oh-my-claude-sisyphus)
   const pluginCacheBase = join(home, ".claude/plugins/cache/oh-my-claude-sisyphus/oh-my-claude-sisyphus");
   if (existsSync(pluginCacheBase)) {
     try {
@@ -56,12 +55,10 @@ async function main() {
     } catch { /* continue */ }
   }
 
-  // 2. Development paths (try both old and new directory names)
+  // 2. Development paths
   const devPaths = [
     join(home, "Workspace/oh-my-claude-sisyphus/dist/hud/index.js"),
     join(home, "workspace/oh-my-claude-sisyphus/dist/hud/index.js"),
-    join(home, "Workspace/oh-my-claudecode/dist/hud/index.js"),
-    join(home, "workspace/oh-my-claudecode/dist/hud/index.js"),
   ];
 
   for (const devPath of devPaths) {
@@ -93,20 +90,13 @@ try {
     settings = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'));
   }
 
-  // Add statusLine if not configured or update old path
-  const needsUpdate = !settings.statusLine ||
-    (settings.statusLine.command && settings.statusLine.command.includes('sisyphus-hud.mjs'));
-
-  if (needsUpdate) {
-    settings.statusLine = {
-      type: 'command',
-      command: `node ${hudScriptPath}`
-    };
-    writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
-    console.log('[OMC] Configured HUD statusLine in settings.json');
-  } else {
-    console.log('[OMC] statusLine already configured, skipping');
-  }
+  // Update statusLine to use new HUD path
+  settings.statusLine = {
+    type: 'command',
+    command: `node ${hudScriptPath}`
+  };
+  writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+  console.log('[OMC] Configured HUD statusLine in settings.json');
 } catch (e) {
   console.log('[OMC] Warning: Could not configure settings.json:', e.message);
 }
