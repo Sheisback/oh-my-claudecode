@@ -239,6 +239,42 @@ The status bar now shows OMC state. Restart Claude Code to see it.
 Your workflow won't break - it just got easier!
 ```
 
+## Step 8: Ask About Starring Repository
+
+First, check if `gh` CLI is available and authenticated:
+
+```bash
+gh auth status &>/dev/null
+```
+
+### If gh is available and authenticated:
+
+Use the AskUserQuestion tool to prompt the user:
+
+**Question:** "If you're enjoying oh-my-claudecode, would you like to support the project by starring it on GitHub?"
+
+**Options:**
+1. **Yes, star it!** - Star the repository
+2. **No thanks** - Skip without further prompts
+3. **Maybe later** - Skip without further prompts
+
+If user chooses "Yes, star it!":
+
+```bash
+gh api -X PUT /user/starred/Yeachan-Heo/oh-my-claudecode 2>/dev/null && echo "Thanks for starring! ⭐" || true
+```
+
+**Note:** Fail silently if the API call doesn't work - never block setup completion.
+
+### If gh is NOT available or not authenticated:
+
+```bash
+echo ""
+echo "If you enjoy oh-my-claudecode, consider starring the repo:"
+echo "  https://github.com/Yeachan-Heo/oh-my-claudecode"
+echo ""
+```
+
 ## Fallback
 
 If curl fails, tell user to manually download from:
