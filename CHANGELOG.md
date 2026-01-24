@@ -29,9 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Custom pipeline syntax with model specification
 
 - **Unified Cancel Skill**: Smart cancellation for all modes
-  - Auto-detects active mode (autopilot, ralph, ultrawork, ultraqa)
+  - Auto-detects active mode (autopilot, ralph, ultrawork, ecomode, ultraqa, swarm, ultrapilot, pipeline)
   - Handles dependency-aware cancellation order
   - `--force` flag to clear ALL states
+
+- **Ecomode**: Token-efficient parallel execution mode
+  - Uses Haiku for simple tasks, Sonnet for standard work
+  - Automatic model tier selection based on task complexity
+  - Usage: `/ecomode "task"` or say "ecomode" keyword
+  - State tracking in `.omc/ecomode-state.json`
 
 - **Verification Module** (`src/features/verification/`)
   - Reusable verification protocol for ralph, ultrawork, and autopilot
@@ -111,7 +117,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **QA-Tester-High Prompt**: Extracted inline prompt to `agents/qa-tester-high.md`
   - Follows same pattern as other agents with external prompts
 
-### Skills (35 total, 5 new)
+#### Test Fixes
+- Updated skills.test.ts count from 35 to 37 (added cancel-ecomode, ecomode)
+- Updated installer.test.ts to check for Migration section instead of inline compatibility text
+- All 612 tests passing
+
+### Skills (37 total, 7 new)
 | New Skill | Description |
 |-----------|-------------|
 | `cancel` | Unified cancellation for all modes |
@@ -119,6 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | `swarm` | N coordinated agents with task claiming |
 | `ultrapilot` | Parallel autopilot (3-5x faster) |
 | `mcp-setup` | MCP server configuration |
+| `ecomode` | Token-efficient parallel execution |
+| `cancel-ecomode` | Cancel ecomode mode |
 
 ### Agents (30 total, 1 new)
 | New Agent | Model | Description |
@@ -135,8 +148,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Delegation Enforcer | `src/features/delegation-enforcer.ts` | Model injection middleware |
 
 ### Files Changed Summary
-- **New files**: 45+
-- **Modified files**: 30+
+- **New files**: 50+
+- **Modified files**: 35+
 - **Deleted files**: 15+ (consolidated into unified modules)
 - **Tests**: 612 passing (all green)
 
