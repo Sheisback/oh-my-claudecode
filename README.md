@@ -1,4 +1,8 @@
-<div align="center">
+# Oh-My-ClaudeCode
+
+[![npm version](https://img.shields.io/npm/v/oh-my-claude-sisyphus.svg)](https://www.npmjs.com/package/oh-my-claude-sisyphus)
+[![Sponsor](https://img.shields.io/badge/Sponsor-❤️-red?style=flat&logo=github)](https://github.com/sponsors/Yeachan-Heo)
+
 
 ![oh-my-claudecode](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode-website/main/social-preview.png)
 
@@ -146,3 +150,22 @@ MIT
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=Yeachan-Heo/oh-my-claudecode&type=date&legend=top-left)](https://www.star-history.com/#Yeachan-Heo/oh-my-claudecode&type=date&legend=top-left)
+
+## 💖 Support This Project
+
+If Oh-My-ClaudeCode helps your workflow, consider sponsoring:
+
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-❤️-red?style=for-the-badge&logo=github)](https://github.com/sponsors/Yeachan-Heo)
+
+**Why sponsor?**
+- Keep development active
+- Priority support for sponsors
+- Influence roadmap & features
+- Help maintain free & open source
+
+**Other ways to help:**
+- ⭐ Star the repo
+- 🐛 Report bugs
+- 💡 Suggest features
+- 📝 Contribute code
+
