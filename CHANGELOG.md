@@ -5,6 +5,89 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.3] - 2026-01-28
+
+### Added
+
+#### MCP/Plugin Compatibility Layer (Major Feature)
+
+A comprehensive compatibility layer enabling OMC to discover, register, and use external plugins, MCP servers, and tools. This makes OMC a good citizen in the Claude ecosystem by resolving inter-plugin conflicts.
+
+- **Plugin Discovery** (`src/compatibility/discovery.ts`)
+  - Auto-discovery of installed plugins and MCP servers
+  - JSON Schema validation of plugin manifests using ajv
+  - Path traversal protection with `isPathWithinDirectory()` validation
+  - Symlink resolution and directory containment checks
+
+- **Tool Registry** (`src/compatibility/registry.ts`)
+  - Central registry for all discovered tools
+  - Conflict resolution when multiple plugins provide the same tool
+  - Priority-based tool selection
+
+- **Permission Adapter** (`src/compatibility/permission-adapter.ts`)
+  - Safe external tool usage with permission integration
+  - ReDoS prevention using safe-regex library for pattern validation
+
+- **MCP Bridge** (`src/compatibility/mcp-bridge.ts`)
+  - Server connection management and tool invocation
+  - Command whitelist enforcement (node, npx, python, python3, ruby, go)
+  - Environment variable filtering to block dangerous vars (LD_PRELOAD, NODE_OPTIONS, etc.)
+  - Proper child process error handlers and cleanup on spawn failure
+
+- **Documentation** (`docs/COMPATIBILITY.md`)
+  - 1,000+ line comprehensive documentation covering architecture, usage, and security
+
+- **CLI Tools**
+  - `omc tools list` - List all discovered tools
+  - `omc tools enable/disable` - Manage tool availability
+
+### Fixed
+
+#### Security Fixes (6 Vulnerabilities) (#170)
+
+In response to security review by @shaun0927:
+
+1. **Arbitrary Code Execution** - Added command whitelist to MCP bridge; only allowed executables can be spawned
+2. **Environment Variable Injection** - Block 10 dangerous environment variables (LD_PRELOAD, NODE_OPTIONS, etc.)
+3. **ReDoS Vulnerability** - Validate regex patterns with safe-regex library before compilation
+4. **No Schema Validation** - Added ajv-based JSON Schema validation for plugin manifests
+5. **Missing Error Handlers** - Added child process error handlers with proper cleanup on spawn failure
+6. **Path Traversal** - Added `isPathWithinDirectory()` with symlink resolution to prevent directory escape
+
+#### Other Fixes
+- **fix(hud):** Address code review feedback for cache toggle feature (#164)
+- **fix(rate-limit-wait):** Add ESM compatibility for `__filename` in daemon (#169, #172)
+
+### Testing
+
+- **64 new tests** (all passing)
+  - 30 compatibility layer tests (`src/__tests__/compatibility.test.ts`)
+  - 34 security vulnerability tests (`src/__tests__/compatibility-security.test.ts`)
+
+### Dependencies Added
+
+- `ajv` ^8.17.1 - JSON Schema validation
+- `safe-regex` ^2.1.1 - ReDoS prevention
+
+### Technical Details
+
+**New Files:**
+- `src/compatibility/` - Complete compatibility layer (6 source files)
+  - `index.ts` - Main exports and initialization
+  - `types.ts` - TypeScript interfaces (276 lines)
+  - `discovery.ts` - Plugin/MCP discovery with schema validation
+  - `registry.ts` - Tool registry with conflict resolution
+  - `permission-adapter.ts` - Permission integration with ReDoS protection
+  - `mcp-bridge.ts` - MCP server bridge with security hardening
+  - `safe-regex.d.ts` - Type declarations for safe-regex
+- `docs/COMPATIBILITY.md` - Architecture documentation (1,051 lines)
+- `src/__tests__/compatibility.test.ts` - Feature tests (612 lines)
+- `src/__tests__/compatibility-security.test.ts` - Security tests (549 lines)
+
+**Lines Added:** ~5,000+
+
+---
+
 ## [3.7.2] - 2026-01-27
 
 ### Fixed
