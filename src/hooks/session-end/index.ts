@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 export interface SessionEndInput {
   session_id: string;
@@ -211,6 +212,104 @@ export function cleanupTransientState(directory: string): number {
 }
 
 /**
+ * Mode state files that should be cleaned up on session end.
+ * These files track active execution modes that should not persist across sessions.
+ */
+const MODE_STATE_FILES = [
+  { file: 'autopilot-state.json', mode: 'autopilot', hasGlobal: false, globalPath: '' },
+  { file: 'ultrapilot-state.json', mode: 'ultrapilot', hasGlobal: false, globalPath: '' },
+  { file: 'ralph-state.json', mode: 'ralph', hasGlobal: true, globalPath: '' },
+  { file: 'ultrawork-state.json', mode: 'ultrawork', hasGlobal: true, globalPath: '.claude/ultrawork-state.json' },
+  { file: 'ecomode-state.json', mode: 'ecomode', hasGlobal: true, globalPath: '' },
+  { file: 'ultraqa-state.json', mode: 'ultraqa', hasGlobal: false, globalPath: '' },
+  { file: 'pipeline-state.json', mode: 'pipeline', hasGlobal: false, globalPath: '' },
+  // Swarm uses marker file + SQLite
+  { file: 'swarm-active.marker', mode: 'swarm', hasGlobal: false, globalPath: '' },
+  { file: 'swarm-summary.json', mode: 'swarm', hasGlobal: false, globalPath: '' },
+];
+
+/**
+ * Clean up mode state files on session end.
+ *
+ * This prevents stale state from causing the stop hook to malfunction
+ * in subsequent sessions. When a session ends normally, all active modes
+ * should be considered terminated.
+ *
+ * @returns Object with counts of files removed and modes cleaned
+ */
+export function cleanupModeStates(directory: string): { filesRemoved: number; modesCleaned: string[] } {
+  let filesRemoved = 0;
+  const modesCleaned: string[] = [];
+  const stateDir = path.join(directory, '.omc', 'state');
+  const homeDir = os.homedir();
+
+  if (!fs.existsSync(stateDir)) {
+    return { filesRemoved, modesCleaned };
+  }
+
+  for (const { file, mode, hasGlobal, globalPath } of MODE_STATE_FILES) {
+    const localPath = path.join(stateDir, file);
+
+    // Check if local state exists and is active
+    if (fs.existsSync(localPath)) {
+      try {
+        // For JSON files, check if active before removing
+        if (file.endsWith('.json')) {
+          const content = fs.readFileSync(localPath, 'utf-8');
+          const state = JSON.parse(content);
+
+          // Only clean if marked as active (prevents removing historical/completed states)
+          if (state.active === true) {
+            fs.unlinkSync(localPath);
+            filesRemoved++;
+            if (!modesCleaned.includes(mode)) {
+              modesCleaned.push(mode);
+            }
+          }
+        } else {
+          // For marker files, always remove
+          fs.unlinkSync(localPath);
+          filesRemoved++;
+          if (!modesCleaned.includes(mode)) {
+            modesCleaned.push(mode);
+          }
+        }
+      } catch {
+        // Ignore errors, continue with other files
+      }
+    }
+
+    // Also clean global state if applicable
+    if (hasGlobal) {
+      const globalStatePath = globalPath
+        ? path.join(homeDir, globalPath)
+        : path.join(homeDir, '.omc', 'state', file);
+
+      if (fs.existsSync(globalStatePath)) {
+        try {
+          if (file.endsWith('.json')) {
+            const content = fs.readFileSync(globalStatePath, 'utf-8');
+            const state = JSON.parse(content);
+
+            if (state.active === true) {
+              fs.unlinkSync(globalStatePath);
+              filesRemoved++;
+            }
+          } else {
+            fs.unlinkSync(globalStatePath);
+            filesRemoved++;
+          }
+        } catch {
+          // Ignore errors
+        }
+      }
+    }
+  }
+
+  return { filesRemoved, modesCleaned };
+}
+
+/**
  * Export session summary to .omc/sessions/
  */
 export function exportSessionSummary(directory: string, metrics: SessionMetrics): void {
@@ -241,6 +340,10 @@ export function processSessionEnd(input: SessionEndInput): HookOutput {
 
   // Clean up transient state files
   cleanupTransientState(input.cwd);
+
+  // Clean up mode state files to prevent stale state issues
+  // This ensures the stop hook won't malfunction in subsequent sessions
+  cleanupModeStates(input.cwd);
 
   // Return simple response - metrics are persisted to .omc/sessions/
   return { continue: true };
