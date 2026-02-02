@@ -76,6 +76,7 @@ import {
   handleSessionEnd,
   type SessionEndInput
 } from './session-end/index.js';
+import { initSilentAutoUpdate } from '../features/auto-update.js';
 
 /**
  * Validates that an input object contains all required fields.
@@ -363,6 +364,9 @@ async function processPersistentMode(input: HookInput): Promise<HookOutput> {
 async function processSessionStart(input: HookInput): Promise<HookOutput> {
   const sessionId = input.sessionId;
   const directory = input.directory || process.cwd();
+
+  // Trigger silent auto-update check (non-blocking, checks config internally)
+  initSilentAutoUpdate();
 
   const messages: string[] = [];
 
