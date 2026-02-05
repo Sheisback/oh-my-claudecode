@@ -36,6 +36,26 @@ autopilot: build a REST API for managing tasks
 
 以上です。あとは自動で進みます。
 
+### アップデート
+
+プラグイン更新後、**必ずリビルドしてセットアップを再実行**してください：
+
+```bash
+# 1. プラグインを更新
+/plugin install oh-my-claudecode
+
+# 2. プラグインをリビルドして再設定
+/oh-my-claudecode:omc-setup
+```
+
+> `dist/` ディレクトリ（コンパイル済みコード）は git に含まれていないため、更新のたびにプラグインをリビルドする必要があります。インストール時に自動生成されます。
+
+更新後に問題が発生した場合は、古いプラグインキャッシュをクリアしてください：
+
+```bash
+/oh-my-claudecode:doctor
+```
+
 <h1 align="center">あなたの Claude がステロイド級にパワーアップ。</h1>
 
 <p align="center">

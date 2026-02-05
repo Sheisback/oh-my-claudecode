@@ -36,6 +36,26 @@ autopilot: build a REST API for managing tasks
 
 끝입니다. 나머지는 모두 자동입니다.
 
+### 업데이트
+
+플러그인 업데이트 후, **반드시 리빌드하고 셋업을 다시 실행**하세요:
+
+```bash
+# 1. 플러그인 업데이트
+/plugin install oh-my-claudecode
+
+# 2. 플러그인 리빌드 및 재설정
+/oh-my-claudecode:omc-setup
+```
+
+> `dist/` 디렉토리(컴파일된 코드)는 git에 포함되지 않으므로, 업데이트할 때마다 플러그인을 리빌드해야 합니다. 설치 과정에서 자동으로 생성됩니다.
+
+업데이트 후 문제가 발생하면, 이전 플러그인 캐시를 정리하세요:
+
+```bash
+/oh-my-claudecode:doctor
+```
+
 <h1 align="center">당신의 Claude가 스테로이드를 맞았습니다.</h1>
 
 <p align="center">
