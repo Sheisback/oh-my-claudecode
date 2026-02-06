@@ -67,7 +67,7 @@ export function executeGemini(prompt: string, model?: string, cwd?: string): Pro
   return new Promise((resolve, reject) => {
     if (model) validateModelName(model);
     let settled = false;
-    const args = ['--yolo'];
+    const args = ['-p', '', '--yolo'];
     if (model) {
       args.push('--model', model);
     }
@@ -143,7 +143,7 @@ export function executeGeminiBackground(
 ): { pid: number } | { error: string } {
   try {
     if (model) validateModelName(model);
-    const args = ['--yolo'];
+    const args = ['-p', '', '--yolo'];
     if (model) {
       args.push('--model', model);
     }
@@ -457,16 +457,10 @@ export async function handleAskGemini(args: {
     };
   }
 
-  // If output_file specified, nudge the CLI to write a work summary there
-  let userPrompt = resolvedPrompt;
-  if (args.output_file) {
-    const outputPath = resolve(baseDir, args.output_file);
-    userPrompt = `IMPORTANT: After completing the task, write a WORK SUMMARY to: ${outputPath}
-Include: what was done, files modified/created, key decisions made, and any issues encountered.
-The summary is for the orchestrator to understand what changed - actual work products should be created directly.
+  // Add headless execution context so Gemini produces comprehensive output
+  const userPrompt = `[HEADLESS SESSION] You are running non-interactively in a headless pipeline. Produce your FULL, comprehensive analysis directly in your response. Do NOT ask for clarification or confirmation - work thoroughly with all provided context. Do NOT write brief acknowledgments - your response IS the deliverable.
 
 ${resolvedPrompt}`;
-  }
 
   // Check CLI availability
   const detection = detectGeminiCli();

@@ -14386,11 +14386,14 @@ function parseCodexOutput(output) {
   }
   return messages.join("\n") || output;
 }
-function executeCodex(prompt, model, cwd) {
+function executeCodex(prompt, model, cwd, outputFile) {
   return new Promise((resolve5, reject) => {
     validateModelName(model);
     let settled = false;
     const args = ["exec", "-m", model, "--json", "--full-auto"];
+    if (outputFile) {
+      args.push("-o", outputFile);
+    }
     const child = (0, import_child_process3.spawn)("codex", args, {
       stdio: ["pipe", "pipe", "pipe"],
       ...cwd ? { cwd } : {},
@@ -14449,18 +14452,18 @@ function executeCodex(prompt, model, cwd) {
     child.stdin.end();
   });
 }
-async function executeCodexWithFallback(prompt, model, cwd) {
+async function executeCodexWithFallback(prompt, model, cwd, outputFile) {
   const modelExplicit = model !== void 0 && model !== null && model !== "";
   const effectiveModel = model || CODEX_DEFAULT_MODEL;
   if (modelExplicit) {
-    const response = await executeCodex(prompt, effectiveModel, cwd);
+    const response = await executeCodex(prompt, effectiveModel, cwd, outputFile);
     return { response, usedFallback: false, actualModel: effectiveModel };
   }
   const modelsToTry = CODEX_MODEL_FALLBACKS.includes(effectiveModel) ? CODEX_MODEL_FALLBACKS.slice(CODEX_MODEL_FALLBACKS.indexOf(effectiveModel)) : [effectiveModel, ...CODEX_MODEL_FALLBACKS];
   let lastError = null;
   for (const tryModel of modelsToTry) {
     try {
-      const response = await executeCodex(prompt, tryModel, cwd);
+      const response = await executeCodex(prompt, tryModel, cwd, outputFile);
       return {
         response,
         usedFallback: tryModel !== effectiveModel,
@@ -14483,6 +14486,9 @@ function executeCodexBackground(fullPrompt, modelInput, jobMeta, workingDirector
     const trySpawnWithModel = (tryModel, remainingModels) => {
       validateModelName(tryModel);
       const args = ["exec", "-m", tryModel, "--json", "--full-auto"];
+      if (jobMeta.responseFile) {
+        args.push("-o", jobMeta.responseFile);
+      }
       const child = (0, import_child_process3.spawn)("codex", args, {
         detached: process.platform !== "win32",
         stdio: ["pipe", "pipe", "pipe"],
@@ -14760,15 +14766,9 @@ async function handleAskCodex(args) {
       isError: true
     };
   }
-  let userPrompt = resolvedPrompt;
-  if (args.output_file) {
-    const outputPath = (0, import_path5.resolve)(baseDir, args.output_file);
-    userPrompt = `IMPORTANT: After completing the task, write a WORK SUMMARY to: ${outputPath}
-Include: what was done, files modified/created, key decisions made, and any issues encountered.
-The summary is for the orchestrator to understand what changed - actual work products should be created directly.
+  const userPrompt = `[HEADLESS SESSION] You are running non-interactively in a headless pipeline. Produce your FULL, comprehensive analysis directly in your response. Do NOT ask for clarification or confirmation - work thoroughly with all provided context. Do NOT write brief acknowledgments - your response IS the deliverable.
 
 ${resolvedPrompt}`;
-  }
   const detection = detectCodexCli();
   if (!detection.available) {
     return {
@@ -14865,7 +14865,7 @@ ${detection.installHint}`
     }
   }
   try {
-    const { response, usedFallback, actualModel } = await executeCodexWithFallback(fullPrompt, args.model, baseDir);
+    const { response, usedFallback, actualModel } = await executeCodexWithFallback(fullPrompt, args.model, baseDir, resolvedOutputPath);
     if (promptResult) {
       persistResponse({
         provider: "codex",
