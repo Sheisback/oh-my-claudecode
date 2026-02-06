@@ -155,7 +155,7 @@ export async function handleWaitForJob(provider, jobId, timeoutMs = 3600000) {
                 continue;
             }
         }
-        const jobDir = getJobWorkingDir(jobId);
+        const jobDir = getJobWorkingDir(provider, jobId);
         const found = findJobStatusFile(provider, jobId, jobDir);
         if (!found) {
             // Job may not be written yet (async SQLite init race) — retry with backoff
@@ -235,7 +235,7 @@ export async function handleCheckJobStatus(provider, jobId) {
             return textResult(lines.filter(Boolean).join('\n'));
         }
     }
-    const jobDir = getJobWorkingDir(jobId);
+    const jobDir = getJobWorkingDir(provider, jobId);
     const found = findJobStatusFile(provider, jobId, jobDir);
     if (!found) {
         return textResult(`No job found with ID: ${jobId}`, true);
@@ -271,7 +271,7 @@ export async function handleKillJob(provider, jobId, signal = 'SIGTERM') {
     if (!ALLOWED_SIGNALS.has(signal)) {
         return textResult(`Invalid signal: ${signal}. Allowed signals: ${[...ALLOWED_SIGNALS].join(', ')}`, true);
     }
-    const jobDir = getJobWorkingDir(jobId);
+    const jobDir = getJobWorkingDir(provider, jobId);
     const found = findJobStatusFile(provider, jobId, jobDir);
     if (!found) {
         // SQLite fallback: try to find job in database when JSON file is missing

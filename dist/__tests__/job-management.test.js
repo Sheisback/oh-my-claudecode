@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { findJobStatusFile, handleKillJob, handleWaitForJob } from '../mcp/job-management.js';
+import { findJobStatusFile, handleKillJob, handleWaitForJob, handleCheckJobStatus } from '../mcp/job-management.js';
 import * as promptPersistence from '../mcp/prompt-persistence.js';
 // Mock the prompt-persistence module
 vi.mock('../mcp/prompt-persistence.js', async () => {
@@ -7,6 +7,7 @@ vi.mock('../mcp/prompt-persistence.js', async () => {
     return {
         ...actual,
         getPromptsDir: vi.fn(() => '/tmp/test-prompts'),
+        getJobWorkingDir: vi.fn(() => undefined),
         readJobStatus: vi.fn(),
         writeJobStatus: vi.fn(),
         readCompletedResponse: vi.fn(),
@@ -290,6 +291,120 @@ describe('job-management', () => {
                 const result = await handleWaitForJob('codex', 'ab12cd34', 5000);
                 expect(result.isError).toBeFalsy();
             });
+        });
+    });
+    describe('findJobStatusFile with workingDirectory', () => {
+        it('uses provided workingDirectory for prompts dir lookup', async () => {
+            const { getPromptsDir } = await import('../mcp/prompt-persistence.js');
+            const fs = await import('fs');
+            // Mock getPromptsDir to return different paths based on workingDirectory
+            getPromptsDir.mockImplementation((wd) => wd ? `${wd}/.omc/prompts` : '/tmp/test-prompts');
+            fs.existsSync.mockReturnValue(true);
+            fs.readdirSync.mockReturnValue(['codex-status-test-slug-ab12cd34.json']);
+            fs.readFileSync.mockReturnValue(JSON.stringify({
+                status: 'running',
+                spawnedAt: new Date().toISOString()
+            }));
+            const result = findJobStatusFile('codex', 'ab12cd34', '/other/project');
+            expect(result).toBeDefined();
+            expect(getPromptsDir).toHaveBeenCalledWith('/other/project');
+        });
+        it('falls back to CWD when no workingDirectory provided', async () => {
+            const { getPromptsDir } = await import('../mcp/prompt-persistence.js');
+            const fs = await import('fs');
+            getPromptsDir.mockReturnValue('/tmp/test-prompts');
+            fs.existsSync.mockReturnValue(true);
+            fs.readdirSync.mockReturnValue(['codex-status-test-slug-ab12cd34.json']);
+            fs.readFileSync.mockReturnValue(JSON.stringify({
+                status: 'running',
+                spawnedAt: new Date().toISOString()
+            }));
+            const result = findJobStatusFile('codex', 'ab12cd34');
+            expect(result).toBeDefined();
+            expect(getPromptsDir).toHaveBeenCalledWith(undefined);
+        });
+    });
+    describe('handleWaitForJob retry on not-found', () => {
+        it('retries when job is not found initially then succeeds', async () => {
+            const fs = await import('fs');
+            // First 3 calls: not found, then found with completed status
+            let callCount = 0;
+            fs.existsSync.mockReturnValue(true);
+            fs.readdirSync.mockImplementation(() => {
+                callCount++;
+                if (callCount <= 3)
+                    return []; // Not found for first 3 calls
+                return ['codex-status-test-slug-ab12cd34.json'];
+            });
+            fs.readFileSync.mockReturnValue(JSON.stringify({
+                status: 'completed',
+                spawnedAt: new Date().toISOString(),
+                completedAt: new Date().toISOString()
+            }));
+            const completedStatus = {
+                provider: 'codex',
+                jobId: 'ab12cd34',
+                slug: 'test-slug',
+                status: 'completed',
+                promptFile: '/tmp/prompt.md',
+                responseFile: '/tmp/response.md',
+                model: 'gpt-5.3',
+                agentRole: 'architect',
+                spawnedAt: new Date().toISOString(),
+                completedAt: new Date().toISOString(),
+            };
+            vi.spyOn(promptPersistence, 'readJobStatus').mockReturnValue(completedStatus);
+            vi.spyOn(promptPersistence, 'readCompletedResponse').mockReturnValue({
+                response: 'test response',
+                status: completedStatus,
+            });
+            const result = await handleWaitForJob('codex', 'ab12cd34', 30000);
+            expect(result.isError).toBeFalsy();
+            expect(result.content[0].text).toContain('completed');
+            // Should have retried (callCount > 1)
+            expect(callCount).toBeGreaterThan(1);
+        });
+        it('gives up after 10 not-found retries', async () => {
+            const fs = await import('fs');
+            // Always return not found
+            fs.existsSync.mockReturnValue(true);
+            fs.readdirSync.mockReturnValue([]);
+            const start = Date.now();
+            const result = await handleWaitForJob('codex', 'ab12cd34', 60000);
+            const elapsed = Date.now() - start;
+            expect(result.isError).toBe(true);
+            expect(result.content[0].text).toContain('No job found');
+            // Should have waited through retries (not instant)
+            expect(elapsed).toBeGreaterThan(500);
+        }, 15000); // 15 second timeout for this test
+    });
+    describe('handleCheckJobStatus cross-directory', () => {
+        it('resolves working directory from getJobWorkingDir', async () => {
+            const { getPromptsDir, getJobWorkingDir: getJobWd } = await import('../mcp/prompt-persistence.js');
+            const fs = await import('fs');
+            // Mock getJobWorkingDir to return a cross-directory path
+            getJobWd.mockReturnValue('/other/project');
+            getPromptsDir.mockImplementation((wd) => wd ? `${wd}/.omc/prompts` : '/tmp/test-prompts');
+            fs.existsSync.mockReturnValue(true);
+            fs.readdirSync.mockReturnValue(['codex-status-test-slug-ab12cd34.json']);
+            const mockStatus = {
+                provider: 'codex',
+                jobId: 'ab12cd34',
+                slug: 'test-slug',
+                status: 'running',
+                pid: 12345,
+                promptFile: '/tmp/prompt.md',
+                responseFile: '/tmp/response.md',
+                model: 'gpt-5.3',
+                agentRole: 'architect',
+                spawnedAt: new Date().toISOString(),
+            };
+            fs.readFileSync.mockReturnValue(JSON.stringify(mockStatus));
+            vi.spyOn(promptPersistence, 'readJobStatus').mockReturnValue(mockStatus);
+            const result = await handleCheckJobStatus('codex', 'ab12cd34');
+            expect(result.isError).toBeFalsy();
+            expect(result.content[0].text).toContain('ab12cd34');
+            expect(getPromptsDir).toHaveBeenCalledWith('/other/project');
         });
     });
 });

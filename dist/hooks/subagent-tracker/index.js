@@ -10,6 +10,7 @@
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync, } from "fs";
 import { join } from "path";
+import { recordAgentStart, recordAgentStop } from './session-replay.js';
 export const COST_LIMIT_USD = 1.0;
 export const DEADLOCK_CHECK_THRESHOLD = 3;
 // ============================================================================
@@ -313,6 +314,11 @@ export function processSubagentStart(input) {
         state.total_spawned++;
         // Write updated state
         writeTrackingState(input.cwd, state);
+        // Record to session replay JSONL for /trace
+        try {
+            recordAgentStart(input.cwd, input.session_id, input.agent_id, input.agent_type, input.prompt, parentMode, input.model);
+        }
+        catch { /* best-effort */ }
         // Check for stale agents
         const staleAgents = getStaleAgents(state);
         return {
@@ -376,6 +382,14 @@ export function processSubagentStop(input) {
         }
         // Write updated state
         writeTrackingState(input.cwd, state);
+        // Record to session replay JSONL for /trace
+        // Fix: SDK doesn't populate agent_type in SubagentStop, so use tracked state
+        try {
+            const trackedAgent = agentIndex !== -1 ? state.agents[agentIndex] : undefined;
+            const agentType = trackedAgent?.agent_type || input.agent_type || 'unknown';
+            recordAgentStop(input.cwd, input.session_id, input.agent_id, agentType, succeeded, trackedAgent?.duration_ms);
+        }
+        catch { /* best-effort */ }
         const runningCount = state.agents.filter((a) => a.status === "running").length;
         return {
             continue: true,

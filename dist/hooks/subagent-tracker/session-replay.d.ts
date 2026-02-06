@@ -6,7 +6,7 @@
  *
  * Events are appended to: .omc/state/agent-replay-{sessionId}.jsonl
  */
-export type ReplayEventType = 'agent_start' | 'agent_stop' | 'tool_start' | 'tool_end' | 'file_touch' | 'intervention' | 'error';
+export type ReplayEventType = 'agent_start' | 'agent_stop' | 'tool_start' | 'tool_end' | 'file_touch' | 'intervention' | 'error' | 'hook_fire' | 'hook_result' | 'keyword_detected' | 'skill_activated' | 'skill_invoked' | 'mode_change';
 export interface ReplayEvent {
     /** Seconds since session start */
     t: number;
@@ -25,6 +25,31 @@ export interface ReplayEvent {
     reason?: string;
     parent_mode?: string;
     model?: string;
+    /** Hook name (e.g., "keyword-detector") */
+    hook?: string;
+    /** Claude Code event (e.g., "UserPromptSubmit") */
+    hook_event?: string;
+    /** Detected keyword */
+    keyword?: string;
+    /** Activated skill name */
+    skill_name?: string;
+    /** Skill source */
+    skill_source?: string;
+    /** Previous mode */
+    mode_from?: string;
+    /** New mode */
+    mode_to?: string;
+    /** Whether context was injected */
+    context_injected?: boolean;
+    /** Injected context size (bytes) */
+    context_length?: number;
+}
+export interface AgentBreakdown {
+    type: string;
+    count: number;
+    total_ms: number;
+    avg_ms: number;
+    models: string[];
 }
 export interface ReplaySummary {
     session_id: string;
@@ -49,6 +74,18 @@ export interface ReplaySummary {
         end: number;
     };
     files_touched: string[];
+    hooks_fired?: number;
+    keywords_detected?: string[];
+    skills_activated?: string[];
+    skills_invoked?: string[];
+    mode_transitions?: Array<{
+        from: string;
+        to: string;
+        at: number;
+    }>;
+    agent_breakdown?: AgentBreakdown[];
+    cycle_count?: number;
+    cycle_pattern?: string;
 }
 /**
  * Get the replay file path for a session
@@ -82,6 +119,15 @@ export declare function recordIntervention(directory: string, sessionId: string,
  * Read all events from a replay file
  */
 export declare function readReplayEvents(directory: string, sessionId: string): ReplayEvent[];
+/**
+ * Detect repeating cycles in an agent type sequence.
+ * E.g., [planner, critic, planner, critic] → 2 cycles of "planner/critic"
+ * Tries pattern lengths from 2 up to half the sequence length.
+ */
+export declare function detectCycles(sequence: string[]): {
+    cycles: number;
+    pattern: string;
+};
 /**
  * Generate a summary of a replay session for bottleneck analysis
  */

@@ -162,6 +162,36 @@ export function readReplayEvents(directory, sessionId) {
     }
 }
 /**
+ * Detect repeating cycles in an agent type sequence.
+ * E.g., [planner, critic, planner, critic] → 2 cycles of "planner/critic"
+ * Tries pattern lengths from 2 up to half the sequence length.
+ */
+export function detectCycles(sequence) {
+    if (sequence.length < 2)
+        return { cycles: 0, pattern: '' };
+    // Try pattern lengths from 2 to half the sequence
+    for (let patLen = 2; patLen <= Math.floor(sequence.length / 2); patLen++) {
+        const candidate = sequence.slice(0, patLen);
+        let fullCycles = 0;
+        for (let i = 0; i + patLen <= sequence.length; i += patLen) {
+            const chunk = sequence.slice(i, i + patLen);
+            if (chunk.every((v, idx) => v === candidate[idx])) {
+                fullCycles++;
+            }
+            else {
+                break;
+            }
+        }
+        if (fullCycles >= 2) {
+            return {
+                cycles: fullCycles,
+                pattern: candidate.join('/'),
+            };
+        }
+    }
+    return { cycles: 0, pattern: '' };
+}
+/**
  * Generate a summary of a replay session for bottleneck analysis
  */
 export function getReplaySummary(directory, sessionId) {
@@ -185,16 +215,34 @@ export function getReplaySummary(directory, sessionId) {
     summary.duration_seconds = summary.timeline_range.end - summary.timeline_range.start;
     const filesSet = new Set();
     const agentToolTimings = new Map();
+    // Track agent types for breakdown and cycle detection
+    const agentTypeStats = new Map();
+    const agentTypeSequence = [];
     for (const event of events) {
         switch (event.event) {
             case 'agent_start':
                 summary.agents_spawned++;
+                if (event.agent_type) {
+                    const type = event.agent_type;
+                    if (!agentTypeStats.has(type)) {
+                        agentTypeStats.set(type, { count: 0, total_ms: 0, models: new Set() });
+                    }
+                    agentTypeStats.get(type).count++;
+                    if (event.model)
+                        agentTypeStats.get(type).models.add(event.model);
+                    agentTypeSequence.push(type);
+                }
                 break;
             case 'agent_stop':
                 if (event.success)
                     summary.agents_completed++;
                 else
                     summary.agents_failed++;
+                if (event.agent_type && event.duration_ms) {
+                    const stats = agentTypeStats.get(event.agent_type);
+                    if (stats)
+                        stats.total_ms += event.duration_ms;
+                }
                 break;
             case 'tool_end':
                 if (event.tool) {
@@ -225,9 +273,65 @@ export function getReplaySummary(directory, sessionId) {
                 if (event.file)
                     filesSet.add(event.file);
                 break;
+            case 'hook_fire':
+                if (!summary.hooks_fired)
+                    summary.hooks_fired = 0;
+                summary.hooks_fired++;
+                break;
+            case 'keyword_detected':
+                if (!summary.keywords_detected)
+                    summary.keywords_detected = [];
+                if (event.keyword && !summary.keywords_detected.includes(event.keyword)) {
+                    summary.keywords_detected.push(event.keyword);
+                }
+                break;
+            case 'skill_activated':
+                if (!summary.skills_activated)
+                    summary.skills_activated = [];
+                if (event.skill_name && !summary.skills_activated.includes(event.skill_name)) {
+                    summary.skills_activated.push(event.skill_name);
+                }
+                break;
+            case 'skill_invoked':
+                if (!summary.skills_invoked)
+                    summary.skills_invoked = [];
+                if (event.skill_name && !summary.skills_invoked.includes(event.skill_name)) {
+                    summary.skills_invoked.push(event.skill_name);
+                }
+                break;
+            case 'mode_change':
+                if (!summary.mode_transitions)
+                    summary.mode_transitions = [];
+                if (event.mode_from !== undefined && event.mode_to !== undefined) {
+                    summary.mode_transitions.push({ from: event.mode_from, to: event.mode_to, at: event.t });
+                }
+                break;
         }
     }
     summary.files_touched = Array.from(filesSet);
+    // Build agent breakdown
+    if (agentTypeStats.size > 0) {
+        summary.agent_breakdown = [];
+        for (const [type, stats] of agentTypeStats) {
+            summary.agent_breakdown.push({
+                type,
+                count: stats.count,
+                total_ms: stats.total_ms,
+                avg_ms: stats.count > 0 ? Math.round(stats.total_ms / stats.count) : 0,
+                models: Array.from(stats.models),
+            });
+        }
+        // Sort by count descending
+        summary.agent_breakdown.sort((a, b) => b.count - a.count);
+    }
+    // Detect cycles: alternating agent type patterns (e.g., planner→critic→planner→critic = 2 cycles)
+    if (agentTypeSequence.length >= 2) {
+        const { cycles, pattern } = detectCycles(agentTypeSequence);
+        if (cycles > 0) {
+            summary.cycle_count = cycles;
+            summary.cycle_pattern = pattern;
+        }
+    }
     // Find bottlenecks (tool+agent combos with highest avg time, min 2 calls)
     for (const [agent, tools] of agentToolTimings) {
         for (const [tool, durations] of tools) {

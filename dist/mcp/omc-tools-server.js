@@ -12,6 +12,7 @@ import { skillsTools } from "../tools/skills-tools.js";
 import { stateTools } from "../tools/state-tools.js";
 import { notepadTools } from "../tools/notepad-tools.js";
 import { memoryTools } from "../tools/memory-tools.js";
+import { traceTools } from "../tools/trace-tools.js";
 // Aggregate all custom tools
 const allTools = [
     ...lspTools,
@@ -20,7 +21,8 @@ const allTools = [
     ...skillsTools,
     ...stateTools,
     ...notepadTools,
-    ...memoryTools
+    ...memoryTools,
+    ...traceTools
 ];
 // Convert to SDK tool format
 // The SDK's tool() expects a ZodRawShape directly (not wrapped in z.object())
@@ -43,7 +45,7 @@ export const omcToolNames = allTools.map(t => `mcp__t__${t.name}`);
  * Get tool names filtered by category
  */
 export function getOmcToolNames(options) {
-    const { includeLsp = true, includeAst = true, includePython = true, includeSkills = true, includeState = true, includeNotepad = true, includeMemory = true } = options || {};
+    const { includeLsp = true, includeAst = true, includePython = true, includeSkills = true, includeState = true, includeNotepad = true, includeMemory = true, includeTrace = true } = options || {};
     return omcToolNames.filter(name => {
         if (!includeLsp && name.includes('lsp_'))
             return false;
@@ -58,6 +60,8 @@ export function getOmcToolNames(options) {
         if (!includeNotepad && name.includes('notepad_'))
             return false;
         if (!includeMemory && name.includes('memory_'))
+            return false;
+        if (!includeTrace && name.includes('trace_'))
             return false;
         return true;
     });

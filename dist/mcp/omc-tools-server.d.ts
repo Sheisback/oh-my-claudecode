@@ -25,5 +25,6 @@ export declare function getOmcToolNames(options?: {
     includeState?: boolean;
     includeNotepad?: boolean;
     includeMemory?: boolean;
+    includeTrace?: boolean;
 }): string[];
 //# sourceMappingURL=omc-tools-server.d.ts.map

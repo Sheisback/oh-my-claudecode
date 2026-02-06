@@ -125,7 +125,7 @@ export declare function writeJobStatus(status: JobStatus, workingDirectory?: str
  * Look up the working directory that was used when a job was created.
  * Returns undefined if the job was created in the server's CWD (no override).
  */
-export declare function getJobWorkingDir(jobId: string): string | undefined;
+export declare function getJobWorkingDir(provider: 'codex' | 'gemini', jobId: string): string | undefined;
 /**
  * Read job status from disk
  */

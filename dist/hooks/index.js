@@ -137,4 +137,7 @@ processSessionEnd, handleSessionEnd, recordSessionMetrics, cleanupTransientState
 export { 
 // Project Memory Hook
 registerProjectMemoryContext, clearProjectMemorySession, rescanProjectEnvironment, loadProjectMemory, saveProjectMemory, detectProjectEnvironment, formatContextSummary, formatFullContext, learnFromToolOutput, addCustomNote, processPreCompact as processProjectMemoryPreCompact, mapDirectoryStructure, updateDirectoryAccess, trackAccess, getTopHotPaths, decayHotPaths, detectDirectivesFromMessage, addDirective, formatDirectivesForContext } from './project-memory/index.js';
+export { 
+// Flow Tracer (Agent Flow Trace Recording)
+recordHookFire, recordHookResult, recordKeywordDetected, recordSkillActivated, recordSkillInvoked, recordModeChange, } from './subagent-tracker/flow-tracer.js';
 //# sourceMappingURL=index.js.map

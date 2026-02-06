@@ -14223,8 +14223,12 @@ function getStatusFilePath(provider, slug, promptId, workingDirectory) {
 }
 function writeJobStatus(status, workingDirectory) {
   ensureJobDb(workingDirectory);
+  const mapKey = `${status.provider}:${status.jobId}`;
   if (status.status === "spawned" && workingDirectory) {
-    jobWorkingDirs.set(status.jobId, workingDirectory);
+    jobWorkingDirs.set(mapKey, workingDirectory);
+  }
+  if (status.status === "completed" || status.status === "failed" || status.status === "timeout") {
+    jobWorkingDirs.delete(mapKey);
   }
   try {
     const promptsDir = getPromptsDir(workingDirectory);
@@ -14240,8 +14244,8 @@ function writeJobStatus(status, workingDirectory) {
     console.warn(`[prompt-persistence] Failed to write job status: ${err.message}`);
   }
 }
-function getJobWorkingDir(jobId) {
-  return jobWorkingDirs.get(jobId);
+function getJobWorkingDir(provider, jobId) {
+  return jobWorkingDirs.get(`${provider}:${jobId}`);
 }
 function readJobStatus(provider, slug, promptId, workingDirectory) {
   ensureJobDb(workingDirectory);
@@ -14964,7 +14968,7 @@ async function handleWaitForJob(provider, jobId, timeoutMs = 36e5) {
         continue;
       }
     }
-    const jobDir = getJobWorkingDir(jobId);
+    const jobDir = getJobWorkingDir(provider, jobId);
     const found = findJobStatusFile(provider, jobId, jobDir);
     if (!found) {
       notFoundCount++;
@@ -15036,7 +15040,7 @@ async function handleCheckJobStatus(provider, jobId) {
       return textResult(lines2.filter(Boolean).join("\n"));
     }
   }
-  const jobDir = getJobWorkingDir(jobId);
+  const jobDir = getJobWorkingDir(provider, jobId);
   const found = findJobStatusFile(provider, jobId, jobDir);
   if (!found) {
     return textResult(`No job found with ID: ${jobId}`, true);
@@ -15072,7 +15076,7 @@ async function handleKillJob(provider, jobId, signal = "SIGTERM") {
       true
     );
   }
-  const jobDir = getJobWorkingDir(jobId);
+  const jobDir = getJobWorkingDir(provider, jobId);
   const found = findJobStatusFile(provider, jobId, jobDir);
   if (!found) {
     if (isJobDbInitialized()) {
