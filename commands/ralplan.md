@@ -64,8 +64,8 @@ Three agents collaborate in structured phases to validate and refine work plans:
                              │
                              ▼
                       ┌──────────────┐
-                      │  USER GATE   │  ◄── MANDATORY HUMAN-IN-THE-LOOP
-                      │  (Approval)  │
+                      │  PLAN MODE   │  ◄── MANDATORY HUMAN-IN-THE-LOOP
+                      │  (Approval)  │      via EnterPlanMode/ExitPlanMode
                       └──────┬───────┘
                              │
                 ┌────────────┼────────────┐
@@ -94,7 +94,7 @@ Ralplan maintains persistent state in `.omc/ralplan-state.json` to track progres
 }
 ```
 
-**Phases**: `planner_planning` → `architect_consultation` → `critic_review` → `handling_verdict` → `awaiting_user_approval` → `complete` | `cancelled`
+**Phases**: `planner_planning` → `architect_consultation` → `critic_review` → `handling_verdict` → `awaiting_user_approval` | `awaiting_user_approval_fallback` → `complete` | `cancelled`
 
 ## Plan Mode Interaction (CRITICAL)
 
@@ -210,40 +210,50 @@ Based on Critic's verdict, the skill either proceeds to user approval or continu
 
 ### User Approval Gate (MANDATORY - CANNOT BE SKIPPED)
 
-**This is the HUMAN-IN-THE-LOOP checkpoint. After the Critic approves (or max iterations reached), the orchestrator MUST stop and present the plan to the user for explicit approval before ANY implementation begins.**
+**This is the HUMAN-IN-THE-LOOP checkpoint. After the Critic approves (or max iterations reached), the orchestrator MUST use Claude Code's native Plan Mode to present the plan for user approval before ANY implementation begins.**
 
 **HARD RULES:**
 1. **NEVER** create git branches after Critic approval without user consent
 2. **NEVER** spawn executor agents after Critic approval without user consent
 3. **NEVER** modify source code after Critic approval without user consent
 4. **NEVER** invoke `/oh-my-claudecode:ralph` or any execution mode without user consent
-5. **ALWAYS** use `AskUserQuestion` tool to get explicit user decision
+5. **ALWAYS** use `EnterPlanMode` → write plan summary → `ExitPlanMode` to get explicit user approval
 6. **ALWAYS** wait for user response before taking any action
-7. **IF** `AskUserQuestion` tool is unavailable or fails, **HALT** execution with a clear message and persist state as `awaiting_user_approval`. Do NOT fall back to autonomous execution. Do NOT assume consent.
+7. **IF** Plan Mode is unavailable, errors, or hangs (e.g., MCP hang issue #19623), **FALL BACK** to `AskUserQuestion` with Proceed/Adjust/Discard options. Do NOT fall back to autonomous execution. Do NOT assume consent.
+   - **Timeout:** If `EnterPlanMode` or `ExitPlanMode` does not complete within 30 seconds, treat as failure and trigger fallback.
+   - **Detection:** If `ExitPlanMode` returns an error, throws AbortError, or produces no user response within the timeout, immediately switch to `AskUserQuestion` fallback.
+   - **State transition:** On fallback, set `current_phase: "awaiting_user_approval_fallback"` to distinguish from Plan Mode approval path.
 
 **Update state:** Set `current_phase: "awaiting_user_approval"`
 
-**Log:** `[RALPLAN] Plan approved by Critic. Awaiting user approval before implementation.`
+**Log:** `[RALPLAN] Plan approved by Critic. Entering Plan Mode for user approval.`
 
-**Present to user:**
-1. Display a summary of the approved plan (path, scope, key deliverables, iteration count)
-2. Use `AskUserQuestion` tool with the following options:
-
-| Option | Label | Description |
-|--------|-------|-------------|
-| 1 | **Proceed** | Begin implementation with `/oh-my-claudecode:ralph` |
-| 2 | **Adjust** | Return to Planner to modify specific aspects |
-| 3 | **Discard** | Stop ralplan and discard the plan |
-
-**Handle user response:**
+**Plan Mode Approval Flow:**
+1. Call `EnterPlanMode` to transition to plan mode
+2. Write a plan summary to the plan file at the path in state (`.omc/plans/[feature].md`). **Note:** Writing to `.omc/` plan/state files is explicitly permitted during the approval gate — this is NOT a codebase mutation. Only source code, config, and git operations are forbidden. Include:
+   - Iteration count and Critic verdict summary
+   - Scope: key deliverables and files to be modified
+   - Implementation approach summary
+   - Risk notes from Critic feedback (if any)
+3. Call `ExitPlanMode` to present the plan for user review and approval
+4. **Post-approval verification (CRITICAL):** After `ExitPlanMode` completes, verify the approval is user-originated:
+   - Check that the user explicitly provided a response (not an auto-generated approval)
+   - If the transition to "approved" happened without visible user interaction (indicative of bug #9701), treat as **NOT APPROVED** and fall back to `AskUserQuestion`
+   - Log: `[RALPLAN] Post-ExitPlanMode verification: user intent confirmed` or `[RALPLAN] WARNING: Auto-approval detected, falling back to AskUserQuestion`
+5. User reviews and decides:
 
 | User Decision | Action |
 |---------------|--------|
-| **Proceed** | Set state `active: false, current_phase: "complete"`. Tell user to run `/oh-my-claudecode:ralph` with the plan path, OR invoke it if user explicitly requests |
-| **Adjust** | Return to Planner Planning phase with user's adjustment feedback. Preserve current iteration count (do NOT reset to 0). The existing iteration count continues to enforce the max_iterations safety limit |
-| **Discard** | Set state `active: false, current_phase: "cancelled"`. Log cancellation. Do NOT execute anything |
+| **Approve** (user approves the plan) | Set state `active: false, current_phase: "complete"`. Proceed to implementation with `/oh-my-claudecode:ralph` using the plan path |
+| **Reject / Request changes** | Return to Planner Planning phase with user's adjustment feedback. Preserve current iteration count (do NOT reset to 0). The existing iteration count continues to enforce the max_iterations safety limit |
 | **No response / Silence** | WAIT. Do NOT proceed. Do NOT assume consent |
-| **Session restart / Timeout** | On session restart, if state shows `current_phase: "awaiting_user_approval"`, resume by re-presenting the plan and `AskUserQuestion` prompt. Do NOT auto-continue to execution. The approval gate persists across sessions |
+| **Session restart / Timeout** | On session restart, if state shows `current_phase: "awaiting_user_approval"`, resume by re-entering Plan Mode and presenting the plan again. Do NOT auto-continue to execution. The approval gate persists across sessions |
+
+**Fallback:** If EnterPlanMode/ExitPlanMode is unavailable or errors (e.g., hangs with MCP servers), fall back to `AskUserQuestion` with options: Proceed, Adjust, Discard. Set phase to `awaiting_user_approval_fallback`.
+
+**Resume determinism:** On session restart, check `current_phase`:
+- `awaiting_user_approval` → Re-enter Plan Mode and present the plan again
+- `awaiting_user_approval_fallback` → Use `AskUserQuestion` directly (do NOT retry Plan Mode)
 
 ## Iteration Rules
 
@@ -321,14 +331,15 @@ To stop an active ralplan session:
 6. **Invoke Critic** with plan file path (MANDATORY - CANNOT BE SKIPPED)
 7. **Log:** `[RALPLAN] Critic verdict: <verdict>`
 8. **Handle verdict** - if REJECT, loop back to step 3 with feedback
-9. **Present approved plan to user** using `AskUserQuestion` (MANDATORY - CANNOT BE SKIPPED)
-10. **Log:** `[RALPLAN] Plan approved by Critic. Awaiting user approval before implementation.`
-11. **STOP AND WAIT** for explicit user decision (Proceed / Adjust / Discard)
-12. **Complete** ONLY after user explicitly approves
+9. **Enter Plan Mode** via `EnterPlanMode` and present the approved plan (MANDATORY - CANNOT BE SKIPPED)
+10. **Call `ExitPlanMode`** to request user approval of the plan
+11. **Log:** `[RALPLAN] Plan approved by Critic. Entering Plan Mode for user approval.`
+12. **STOP AND WAIT** for explicit user decision (Approve / Request changes / Reject)
+13. **Complete** ONLY after user explicitly approves
 
 **HARD RULE 1:** Steps 5-7 are NON-NEGOTIABLE. No plan approval, user confirmation, or plan mode exit can occur before the Critic has rendered its verdict. This prevents the plan mode confirmation flow from short-circuiting the ralplan review loop.
 
-**HARD RULE 2:** Steps 9-12 are NON-NEGOTIABLE. After the Critic approves, the orchestrator MUST present the plan to the user and WAIT for explicit consent before ANY implementation (branching, code execution, file modification). This is the human-in-the-loop safety gate that prevents unsolicited autonomous execution.
+**HARD RULE 2:** Steps 9-13 are NON-NEGOTIABLE. After the Critic approves, the orchestrator MUST enter Plan Mode (`EnterPlanMode`), present the plan, and call `ExitPlanMode` to request user approval. The user MUST explicitly approve before ANY implementation (branching, code execution, file modification). If Plan Mode is unavailable, fall back to `AskUserQuestion`. This is the human-in-the-loop safety gate that prevents unsolicited autonomous execution.
 
 **FORBIDDEN after Critic OKAY without user consent:**
 - `git checkout -b` (branch creation)

@@ -24,9 +24,9 @@ Invokes the plan skill with --consensus mode, which:
 4. Iterates until Critic approves (max 5 iterations)
 5. **Presents approved plan to user for explicit consent before any implementation**
 
-**CRITICAL:** Ralplan NEVER proceeds to implementation (branching, code execution, or file modification) without explicit user approval. After Critic consensus, the user is always asked to Proceed, Adjust, or Discard.
+**CRITICAL:** Ralplan NEVER proceeds to implementation (branching, code execution, or file modification) without explicit user approval. After Critic consensus, the orchestrator enters Claude Code's native Plan Mode (`EnterPlanMode` → `ExitPlanMode`) to present the plan for user approval. Falls back to `AskUserQuestion` (Proceed/Adjust/Discard) if Plan Mode is unavailable.
 
-**State:** After Critic consensus, state transitions to `awaiting_user_approval`. User choices: **Proceed** (execute), **Adjust** (re-plan), or **Discard** (cancel). No response = wait indefinitely.
+**State:** After Critic consensus, state transitions to `awaiting_user_approval`. The orchestrator enters Plan Mode for native approval UX. User choices: **Approve** (execute), **Request changes** (re-plan), or reject. Falls back to AskUserQuestion with Proceed/Adjust/Discard if Plan Mode is unavailable.
 
 ## Implementation
 
@@ -37,6 +37,8 @@ Invoke Skill: plan --consensus {{ARGUMENTS}}
 ```
 
 Pass all arguments to the plan skill. The plan skill handles all consensus logic, state management, and iteration.
+
+**Enforcement:** Ralplan inherits and enforces all hard approval-gate invariants defined in `commands/ralplan.md`. If `/plan --consensus` behavior diverges from the approval gate rules (HARD RULE 1 and HARD RULE 2), the ralplan command-level rules take precedence.
 
 ## External Model Consultation (Preferred)
 
