@@ -183,7 +183,6 @@ Spawn N teammates using `Task` with `team_name` and `name` parameters. Each team
 ```json
 {
   "subagent_type": "oh-my-claudecode:executor",
-  "model": "sonnet",
   "team_name": "fix-ts-errors",
   "name": "worker-1",
   "prompt": "<worker-preamble + assigned tasks>"
@@ -586,7 +585,6 @@ Optional settings via `.omc-config.json`:
   "team": {
     "maxAgents": 5,
     "defaultAgentType": "executor",
-    "defaultModel": "sonnet",
     "monitorIntervalMs": 30000,
     "shutdownTimeoutMs": 15000
   }
@@ -595,9 +593,10 @@ Optional settings via `.omc-config.json`:
 
 - **maxAgents** - Maximum teammates (hard cap: 5)
 - **defaultAgentType** - Agent type when not specified (default: `executor`)
-- **defaultModel** - Model for teammates (default: `sonnet`)
 - **monitorIntervalMs** - How often to poll `TaskList` (default: 30s)
 - **shutdownTimeoutMs** - How long to wait for shutdown responses (default: 15s)
+
+> **Note:** Team members do not have a hardcoded model default. Each teammate is a separate Claude Code session that inherits the user's configured model. Since teammates can spawn their own subagents, the session model acts as the orchestration layer while subagents can use any model tier.
 
 ## State Cleanup
 
