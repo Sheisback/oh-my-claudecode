@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
+import { install as installSisyphus, HOOKS_DIR } from '../installer/index.js';
 /** GitHub repository information */
 export const REPO_OWNER = 'Yeachan-Heo';
 export const REPO_NAME = 'oh-my-claudecode';
@@ -199,6 +200,50 @@ export async function checkForUpdates() {
     };
 }
 /**
+ * Reconcile runtime state after update
+ *
+ * This is safe to run repeatedly and refreshes local runtime artifacts that may
+ * lag behind an updated package or plugin cache.
+ */
+export function reconcileUpdateRuntime(options) {
+    const errors = [];
+    try {
+        if (!existsSync(HOOKS_DIR)) {
+            mkdirSync(HOOKS_DIR, { recursive: true });
+        }
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`Failed to prepare hooks directory: ${message}`);
+    }
+    try {
+        const installResult = installSisyphus({
+            force: true,
+            verbose: options?.verbose ?? false,
+            skipClaudeCheck: true,
+            forceHooks: true,
+        });
+        if (!installResult.success) {
+            errors.push(...installResult.errors);
+        }
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`Failed to refresh installer artifacts: ${message}`);
+    }
+    if (errors.length > 0) {
+        return {
+            success: false,
+            message: 'Runtime reconciliation failed',
+            errors,
+        };
+    }
+    return {
+        success: true,
+        message: 'Runtime state reconciled successfully',
+    };
+}
+/**
  * Download and execute the install script to perform an update
  */
 export async function performUpdate(options) {
@@ -223,6 +268,16 @@ export async function performUpdate(options) {
                 installMethod: 'npm',
                 lastCheckAt: new Date().toISOString()
             });
+            const reconcileResult = reconcileUpdateRuntime({ verbose: options?.verbose });
+            if (!reconcileResult.success) {
+                return {
+                    success: false,
+                    previousVersion,
+                    newVersion,
+                    message: `Updated to ${newVersion}, but runtime reconciliation failed`,
+                    errors: reconcileResult.errors,
+                };
+            }
             return {
                 success: true,
                 previousVersion,
