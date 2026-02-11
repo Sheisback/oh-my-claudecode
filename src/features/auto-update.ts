@@ -184,9 +184,22 @@ export function isEcomodeEnabled(): boolean {
 
 /**
  * Check if team feature is enabled
- * Returns false by default - requires explicit opt-in via env var
+ * Returns false by default - requires explicit opt-in
+ * Checks ~/.claude/settings.json first, then env var fallback
  */
 export function isTeamEnabled(): boolean {
+  try {
+    const settingsPath = join(homedir(), '.claude', 'settings.json');
+    if (existsSync(settingsPath)) {
+      const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+      const val = settings.env?.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS;
+      if (val === '1' || val === 'true') {
+        return true;
+      }
+    }
+  } catch {
+    // Fall through to env check
+  }
   const envVal = process.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS;
   return envVal === '1' || envVal === 'true';
 }
