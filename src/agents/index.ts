@@ -19,7 +19,9 @@ export {
   buildKeyTriggersSection,
   validateAgentConfig,
   deepMerge,
-  loadAgentPrompt
+  loadAgentPrompt,
+  formatOpenQuestions,
+  OPEN_QUESTIONS_PATH
 } from './utils.js';
 
 // Individual agent exports

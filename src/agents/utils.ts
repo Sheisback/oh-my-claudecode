@@ -278,6 +278,32 @@ export function parseDisallowedTools(agentName: string): string[] | undefined {
 }
 
 /**
+ * Standard path for open questions file
+ */
+export const OPEN_QUESTIONS_PATH = '.omc/plans/open-questions.md';
+
+/**
+ * Format open questions for appending to the standard open-questions.md file.
+ *
+ * @param topic - The plan or analysis topic name
+ * @param questions - Array of { question, reason } objects
+ * @returns Formatted markdown string ready to append
+ */
+export function formatOpenQuestions(
+  topic: string,
+  questions: Array<{ question: string; reason: string }>
+): string {
+  if (questions.length === 0) return '';
+
+  const date = new Date().toISOString().split('T')[0];
+  const items = questions
+    .map(q => `- [ ] ${q.question} — ${q.reason}`)
+    .join('\n');
+
+  return `\n## ${topic} - ${date}\n${items}\n`;
+}
+
+/**
  * Deep merge utility for configurations
  */
 export function deepMerge<T extends Record<string, unknown>>(
