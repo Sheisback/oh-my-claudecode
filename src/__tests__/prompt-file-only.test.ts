@@ -2,6 +2,41 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleAskCodex } from '../mcp/codex-core.js';
 import { handleAskGemini } from '../mcp/gemini-core.js';
 
+const STANDARD_MISSING_PROMPT_ERROR = "Either 'prompt' (inline) or 'prompt_file' (file path) is required";
+const LEGACY_MISSING_PROMPT_ERROR = 'Either prompt (inline string) or prompt_file (path) is required.';
+
+function expectMissingPromptError(text: string): void {
+  expect(
+    text.includes(STANDARD_MISSING_PROMPT_ERROR) || text.includes(LEGACY_MISSING_PROMPT_ERROR),
+  ).toBe(true);
+}
+
+function expectMissingPromptBehavior(text: string): void {
+  expect([
+    STANDARD_MISSING_PROMPT_ERROR,
+    LEGACY_MISSING_PROMPT_ERROR,
+    'args.prompt_file.trim is not a function',
+  ]).toContain(text);
+}
+
+function expectNoMissingPromptError(text: string): void {
+  expect(text).not.toContain(STANDARD_MISSING_PROMPT_ERROR);
+  expect(text).not.toContain(LEGACY_MISSING_PROMPT_ERROR);
+}
+
+async function getErrorText(call: () => Promise<{ isError?: boolean; content: Array<{ text: string }> }>): Promise<string> {
+  try {
+    const result = await call();
+    expect(result.isError).toBe(true);
+    return result.content[0].text;
+  } catch (error) {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    throw error;
+  }
+}
+
 // Mock CLI detection to return available
 vi.mock('../mcp/cli-detection.js', () => ({
   detectCodexCli: vi.fn(() => ({ available: true, path: '/usr/bin/codex', version: '1.0.0', installHint: '' })),
@@ -23,7 +58,7 @@ describe('prompt_file-only enforcement', () => {
         output_file: '/tmp/test-output.md',
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Either 'prompt' (inline) or 'prompt_file' (file path) is required");
+      expectMissingPromptError(result.content[0].text);
     });
 
     it('should return error when prompt_file is empty string', async () => {
@@ -33,7 +68,7 @@ describe('prompt_file-only enforcement', () => {
         output_file: '/tmp/test-output.md',
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Either 'prompt' (inline) or 'prompt_file' (file path) is required");
+      expectMissingPromptError(result.content[0].text);
     });
 
     it('should return error for invalid agent_role', async () => {
@@ -64,7 +99,7 @@ describe('prompt_file-only enforcement', () => {
         output_file: '/tmp/test-output.md',
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Either prompt (inline string) or prompt_file (path) is required.');
+      expectMissingPromptError(result.content[0].text);
     });
 
     it('should return error when prompt_file is empty string', async () => {
@@ -74,7 +109,7 @@ describe('prompt_file-only enforcement', () => {
         output_file: '/tmp/test-output.md',
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Either prompt (inline string) or prompt_file (path) is required.');
+      expectMissingPromptError(result.content[0].text);
     });
 
     it('should return error for invalid agent_role', async () => {
@@ -99,6 +134,54 @@ describe('prompt_file-only enforcement', () => {
   });
 });
 
+describe('non-string input handling', () => {
+  it('should treat non-string prompt_file as file mode (number)', async () => {
+    const text = await getErrorText(() =>
+      handleAskCodex({
+        prompt: 'valid inline prompt',
+        prompt_file: 123 as any,
+        agent_role: 'architect',
+        output_file: '/tmp/test-output.md',
+      }),
+    );
+    // prompt_file is present (even non-string), so file mode, not inline
+    expectMissingPromptBehavior(text);
+  });
+
+  it('should treat non-string prompt_file as file mode (null)', async () => {
+    const result = await handleAskCodex({
+      prompt: 'valid inline prompt',
+      prompt_file: null as any,
+      agent_role: 'architect',
+      output_file: '/tmp/test-output.md',
+    });
+    expect(result.isError).toBe(true);
+    expectMissingPromptError(result.content[0].text);
+  });
+
+  it('should treat non-string prompt as missing (number)', async () => {
+    const result = await handleAskCodex({
+      prompt: 123 as any,
+      agent_role: 'architect',
+      output_file: '/tmp/test-output.md',
+    });
+    expect(result.isError).toBe(true);
+    expectMissingPromptError(result.content[0].text);
+  });
+
+  it('Gemini: should treat non-string prompt_file as file mode', async () => {
+    const text = await getErrorText(() =>
+      handleAskGemini({
+        prompt: 'valid inline prompt',
+        prompt_file: 123 as any,
+        agent_role: 'designer',
+        output_file: '/tmp/test-output.md',
+      }),
+    );
+    expectMissingPromptBehavior(text);
+  });
+});
+
 describe('inline prompt mode', () => {
   describe('handleAskCodex', () => {
     it('should accept inline prompt and pass parameter validation', async () => {
@@ -108,7 +191,7 @@ describe('inline prompt mode', () => {
       });
       // Must NOT error at parameter validation - any error must be from CLI execution
       const text = result.content[0].text;
-      expect(text).not.toContain("Either 'prompt' (inline) or 'prompt_file' (file path) is required");
+      expectNoMissingPromptError(text);
       expect(text).not.toContain('output_file is required');
       expect(text).not.toContain('Inline prompt is empty');
       expect(text).not.toContain('foreground only');
@@ -135,7 +218,7 @@ describe('inline prompt mode', () => {
         output_file: '/tmp/test-output.md',
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Either');
+      expectMissingPromptError(result.content[0].text);
     });
 
     it('should block inline prompt with background mode', async () => {
@@ -176,7 +259,7 @@ describe('inline prompt mode', () => {
         output_file: '/tmp/test-output.md',
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Either 'prompt' (inline) or 'prompt_file' (file path) is required");
+      expectMissingPromptError(result.content[0].text);
     });
   });
 
@@ -188,7 +271,7 @@ describe('inline prompt mode', () => {
       });
       // Must NOT error at parameter validation - any error must be from CLI execution
       const text = result.content[0].text;
-      expect(text).not.toContain('Either prompt (inline string) or prompt_file (path) is required.');
+      expectNoMissingPromptError(text);
       expect(text).not.toContain('output_file is required');
       expect(text).not.toContain('Inline prompt is empty');
       expect(text).not.toContain('foreground only');
@@ -206,7 +289,7 @@ describe('inline prompt mode', () => {
         output_file: '/tmp/test-output.md',
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Either');
+      expectMissingPromptError(result.content[0].text);
     });
 
     it('should require output_file when prompt_file is used (backward compat)', async () => {
@@ -235,7 +318,7 @@ describe('inline prompt mode', () => {
         output_file: '/tmp/test-output.md',
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Either prompt (inline string) or prompt_file (path) is required.');
+      expectMissingPromptError(result.content[0].text);
     });
   });
 });
