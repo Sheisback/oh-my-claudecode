@@ -141,6 +141,30 @@ export function formatSessionEnd(payload: NotificationPayload): string {
 }
 
 /**
+ * Format session-idle notification message.
+ * Sent when Claude stops and no persistent mode is blocking (truly idle).
+ */
+export function formatSessionIdle(payload: NotificationPayload): string {
+  const lines = [`# Session Idle`, ""];
+
+  lines.push(`Claude has finished and is waiting for input.`);
+  lines.push("");
+
+  if (payload.reason) {
+    lines.push(`**Reason:** ${payload.reason}`);
+  }
+
+  if (payload.modesUsed && payload.modesUsed.length > 0) {
+    lines.push(`**Modes:** ${payload.modesUsed.join(", ")}`);
+  }
+
+  lines.push("");
+  lines.push(buildFooter(payload, true));
+
+  return lines.join("\n");
+}
+
+/**
  * Format ask-user-question notification message.
  * Notifies the user that Claude is waiting for input.
  */
@@ -171,6 +195,8 @@ export function formatNotification(payload: NotificationPayload): string {
       return formatSessionStop(payload);
     case "session-end":
       return formatSessionEnd(payload);
+    case "session-idle":
+      return formatSessionIdle(payload);
     case "ask-user-question":
       return formatAskUserQuestion(payload);
     default:

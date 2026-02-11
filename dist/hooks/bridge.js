@@ -317,6 +317,18 @@ async function processPersistentMode(input) {
     const output = createHookOutput(result);
     const teamState = readTeamStagedState(directory, sessionId);
     if (!teamState || teamState.active !== true || isTeamStateTerminal(teamState)) {
+        // No persistent mode and no active team — Claude is truly idle.
+        // Send session-idle notification (non-blocking) unless this was a user abort or context limit.
+        if (result.mode === "none" && sessionId) {
+            const isAbort = stopContext.user_requested === true || stopContext.userRequested === true;
+            const isContextLimit = stopContext.stop_reason === "context_limit" || stopContext.stopReason === "context_limit";
+            if (!isAbort && !isContextLimit) {
+                import("../notifications/index.js").then(({ notify }) => notify("session-idle", {
+                    sessionId,
+                    projectPath: directory,
+                }).catch(() => { })).catch(() => { });
+            }
+        }
         return output;
     }
     const stage = getTeamStage(teamState);

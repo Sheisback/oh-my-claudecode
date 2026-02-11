@@ -38,6 +38,7 @@ export {
   formatSessionStart,
   formatSessionStop,
   formatSessionEnd,
+  formatSessionIdle,
   formatAskUserQuestion,
 } from "./formatter.js";
 export {

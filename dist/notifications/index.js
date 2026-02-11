@@ -10,7 +10,7 @@
  *   await notify('session-start', { sessionId, projectPath, ... });
  */
 export { dispatchNotifications, sendDiscord, sendDiscordBot, sendTelegram, sendSlack, sendWebhook, } from "./dispatcher.js";
-export { formatNotification, formatSessionStart, formatSessionStop, formatSessionEnd, formatAskUserQuestion, } from "./formatter.js";
+export { formatNotification, formatSessionStart, formatSessionStop, formatSessionEnd, formatSessionIdle, formatAskUserQuestion, } from "./formatter.js";
 export { getCurrentTmuxSession, getTeamTmuxSessions, formatTmuxInfo, } from "./tmux.js";
 export { getNotificationConfig, isEventEnabled, getEnabledPlatforms, } from "./config.js";
 import { getNotificationConfig, isEventEnabled } from "./config.js";

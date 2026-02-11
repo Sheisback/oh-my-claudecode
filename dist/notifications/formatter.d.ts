@@ -20,6 +20,11 @@ export declare function formatSessionStop(payload: NotificationPayload): string;
  */
 export declare function formatSessionEnd(payload: NotificationPayload): string;
 /**
+ * Format session-idle notification message.
+ * Sent when Claude stops and no persistent mode is blocking (truly idle).
+ */
+export declare function formatSessionIdle(payload: NotificationPayload): string;
+/**
  * Format ask-user-question notification message.
  * Notifies the user that Claude is waiting for input.
  */

@@ -11,6 +11,7 @@ export type NotificationEvent =
   | "session-start"
   | "session-stop"
   | "session-end"
+  | "session-idle"
   | "ask-user-question";
 
 /** Supported notification platforms */
@@ -115,6 +116,7 @@ export interface NotificationConfig {
     "session-start"?: EventNotificationConfig;
     "session-stop"?: EventNotificationConfig;
     "session-end"?: EventNotificationConfig;
+    "session-idle"?: EventNotificationConfig;
     "ask-user-question"?: EventNotificationConfig;
   };
 }
