@@ -36,7 +36,7 @@ const askCodexTool = {
       },
       prompt: { type: 'string', description: 'Inline prompt text. Alternative to prompt_file -- the tool auto-persists to a file for audit trail. Use for simpler invocations where file management is unnecessary.' },
       prompt_file: { type: 'string', description: 'Path to file containing the prompt. Required unless \'prompt\' is provided inline.' },
-      output_file: { type: 'string', description: 'Path to write response. Auto-generated when using inline prompt mode. Response content is NOT returned inline for file-based calls - read from this file.' },
+      output_file: { type: 'string', description: 'Required for file-based mode (prompt_file). Auto-generated in inline mode (prompt). Response content is returned inline only when using prompt parameter.' },
       context_files: { type: 'array', items: { type: 'string' }, description: 'File paths to include as context (contents will be prepended to prompt)' },
       model: { type: 'string', description: `Codex model to use (default: ${CODEX_DEFAULT_MODEL}). Set OMC_CODEX_DEFAULT_MODEL env var to change default.` },
       background: { type: 'boolean', description: 'Run in background (non-blocking). Returns immediately with job metadata and file paths. Check response file for completion.' },

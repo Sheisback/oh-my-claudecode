@@ -25,7 +25,7 @@ const askGeminiTool = tool(
     agent_role: { type: "string", description: `Required. Agent perspective for Gemini. Recommended: ${GEMINI_RECOMMENDED_ROLES.join(', ')}. Any valid OMC agent role is accepted.` },
     prompt: { type: "string", description: "Inline prompt string. Alternative to prompt_file -- the prompt is auto-persisted to a file for audit trail. When used, output_file is optional (auto-generated if omitted) and the response is returned inline in the MCP result." },
     prompt_file: { type: "string", description: "Path to file containing the prompt. Takes precedence over inline prompt if both provided." },
-    output_file: { type: "string", description: "Required. Path to write response. Response content is NOT returned inline - read from this file. Optional when using inline prompt (auto-generated if omitted)." },
+    output_file: { type: "string", description: "Required for file-based mode (prompt_file). Auto-generated in inline mode (prompt). Response content is returned inline only when using prompt parameter." },
     files: { type: "array", items: { type: "string" }, description: "File paths to include as context (contents will be prepended to prompt)" },
     model: { type: "string", description: `Gemini model to use (default: ${GEMINI_DEFAULT_MODEL}). Set OMC_GEMINI_DEFAULT_MODEL env var to change default. Auto-fallback chain: ${GEMINI_MODEL_FALLBACKS.join(' → ')}.` },
     background: { type: "boolean", description: "Run in background (non-blocking). Returns immediately with job metadata and file paths. Check response file for completion. Not available with inline prompt." },

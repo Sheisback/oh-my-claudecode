@@ -64,7 +64,7 @@ describe('prompt_file-only enforcement', () => {
         output_file: '/tmp/test-output.md',
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toMatch(/prompt.*required/i);
+      expect(result.content[0].text).toContain('Either prompt (inline string) or prompt_file (path) is required.');
     });
 
     it('should return error when prompt_file is empty string', async () => {
@@ -74,7 +74,7 @@ describe('prompt_file-only enforcement', () => {
         output_file: '/tmp/test-output.md',
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toMatch(/prompt.*required/i);
+      expect(result.content[0].text).toContain('Either prompt (inline string) or prompt_file (path) is required.');
     });
 
     it('should return error for invalid agent_role', async () => {
@@ -114,6 +114,25 @@ describe('inline prompt mode', () => {
         expect(result.content[0].text).not.toContain("Either 'prompt' (inline) or 'prompt_file' (file path) is required");
         expect(result.content[0].text).not.toContain('output_file is required');
       }
+    });
+
+    it('should return error for empty inline prompt', async () => {
+      const result = await handleAskCodex({
+        prompt: '  ',
+        agent_role: 'architect',
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Either 'prompt' (inline) or 'prompt_file' (file path) is required");
+    });
+
+    it('should block inline prompt with background mode', async () => {
+      const result = await handleAskCodex({
+        prompt: 'bg test',
+        agent_role: 'architect',
+        background: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('foreground only');
     });
 
     it('should require output_file when prompt_file is used (backward compat)', async () => {
@@ -156,7 +175,7 @@ describe('inline prompt mode', () => {
       });
       // Should not get a parameter validation error
       if (result.isError) {
-        expect(result.content[0].text).not.toMatch(/prompt.*required/i);
+        expect(result.content[0].text).not.toContain('Either prompt (inline string) or prompt_file (path) is required.');
         expect(result.content[0].text).not.toContain('output_file is required');
       }
     });
@@ -187,7 +206,7 @@ describe('inline prompt mode', () => {
         output_file: '/tmp/test-output.md',
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toMatch(/prompt.*required/i);
+      expect(result.content[0].text).toContain('Either prompt (inline string) or prompt_file (path) is required.');
     });
   });
 });

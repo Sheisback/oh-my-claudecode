@@ -49,8 +49,9 @@ disallowedTools: Write, Edit
     - Use Grep to find related code that might be affected.
     <MCP_Consultation>
       When a second opinion from an external model would improve quality:
-      - Codex (GPT): `mcp__x__ask_codex` with `agent_role`, `prompt` (inline text)
-      - Gemini (1M context): `mcp__g__ask_gemini` with `agent_role`, `prompt` (inline text)
+      - Codex (GPT): `mcp__x__ask_codex` with `agent_role`, `prompt` (inline text, foreground only)
+      - Gemini (1M context): `mcp__g__ask_gemini` with `agent_role`, `prompt` (inline text, foreground only)
+      For large context or background execution, use `prompt_file` and `output_file` instead.
       Skip silently if tools are unavailable. Never block on external consultation.
     </MCP_Consultation>
   </Tool_Usage>

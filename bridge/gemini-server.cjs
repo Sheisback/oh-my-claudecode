@@ -14741,9 +14741,30 @@ function stripFrontmatter(content) {
   const match = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
   return match ? match[1].trim() : content.trim();
 }
-function loadAgentPrompt(agentName) {
+function loadAgentPrompt(agentName, provider) {
   if (!/^[a-z0-9-]+$/i.test(agentName)) {
     throw new Error(`Invalid agent name: contains disallowed characters`);
+  }
+  if (provider) {
+    try {
+      if (provider === "codex" && typeof __AGENT_PROMPTS_CODEX__ !== "undefined" && __AGENT_PROMPTS_CODEX__ !== null) {
+        const prompt = __AGENT_PROMPTS_CODEX__[agentName];
+        if (prompt) return prompt;
+      }
+    } catch {
+    }
+    try {
+      const providerDir = (0, import_path3.join)(getPackageDir(), `agents.${provider}`);
+      const providerPath = (0, import_path3.join)(providerDir, `${agentName}.md`);
+      const resolvedPath = (0, import_path3.resolve)(providerPath);
+      const resolvedProviderDir = (0, import_path3.resolve)(providerDir);
+      const rel = (0, import_path3.relative)(resolvedProviderDir, resolvedPath);
+      if (!rel.startsWith("..") && !(0, import_path3.isAbsolute)(rel)) {
+        const content = (0, import_fs3.readFileSync)(providerPath, "utf-8");
+        return stripFrontmatter(content);
+      }
+    } catch {
+    }
   }
   try {
     if (typeof define_AGENT_PROMPTS_default !== "undefined" && define_AGENT_PROMPTS_default !== null) {

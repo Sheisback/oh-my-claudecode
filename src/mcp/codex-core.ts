@@ -667,17 +667,40 @@ Suggested: use a working_directory within the project worktree, or set OMC_ALLOW
   }
 
   // Determine inline mode: prompt provided without prompt_file
-  const isInlineMode = !!args.prompt && !args.prompt_file;
+  const isInlineMode = !!args.prompt?.trim() && !args.prompt_file?.trim();
+
+  // Inline mode is foreground only - check BEFORE any file persistence to avoid leaks
+  if (isInlineMode && args.background) {
+    return {
+      content: [{ type: 'text' as const, text: 'Inline prompt mode is foreground only. Use prompt_file for background execution.' }],
+      isError: true
+    };
+  }
+
+  // Validate non-empty inline prompt
+  if (isInlineMode && !args.prompt?.trim()) {
+    return {
+      content: [{ type: 'text' as const, text: 'Inline prompt is empty. Provide a non-empty prompt string.' }],
+      isError: true
+    };
+  }
 
   // Handle inline prompt: auto-persist to file for audit trail
-  if (args.prompt && !args.prompt_file) {
-    const promptsDir = getPromptsDir(baseDir);
-    mkdirSync(promptsDir, { recursive: true });
-    const slug = slugify(args.prompt);
-    const id = generatePromptId();
-    const inlinePromptFile = join(promptsDir, `codex-inline-${slug}-${id}.md`);
-    writeFileSync(inlinePromptFile, args.prompt, 'utf-8');
-    args = { ...args, prompt_file: inlinePromptFile };
+  if (isInlineMode) {
+    try {
+      const promptsDir = getPromptsDir(baseDir);
+      mkdirSync(promptsDir, { recursive: true });
+      const slug = slugify(args.prompt!);
+      const id = generatePromptId();
+      const inlinePromptFile = join(promptsDir, `codex-inline-${slug}-${id}.md`);
+      writeFileSync(inlinePromptFile, args.prompt!, 'utf-8');
+      args = { ...args, prompt_file: inlinePromptFile };
+    } catch (err) {
+      return {
+        content: [{ type: 'text' as const, text: `Failed to persist inline prompt: ${(err as Error).message}` }],
+        isError: true
+      };
+    }
   }
 
   // Validate that at least one prompt source is provided
@@ -904,20 +927,22 @@ ${resolvedPrompt}`;
       }
     }
 
-    // Inline mode: return the actual response content in the MCP result
+    // Build success response with metadata for path policy transparency
+    const responseLines = [
+      paramLines,
+      `**Resolved Working Directory:** ${baseDirReal}`,
+      `**Path Policy:** OMC_ALLOW_EXTERNAL_WORKDIR=${process.env.OMC_ALLOW_EXTERNAL_WORKDIR || '0 (enforced)'}`,
+    ];
+
+    // In inline mode, include the actual response content in the MCP result
     if (isInlineMode) {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `${paramLines}\n\n---\n\n${response}`
-        }]
-      };
+      responseLines.push('', '---', '', response);
     }
 
     return {
       content: [{
         type: 'text' as const,
-        text: paramLines
+        text: responseLines.join('\n')
       }]
     };
   } catch (err) {

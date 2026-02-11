@@ -520,7 +520,23 @@ export async function handleAskGemini(args: {
   // Inline prompt support: when `prompt` is provided as a string, auto-persist
   // it to a file for audit trail and continue with normal prompt_file flow.
   // `prompt_file` takes precedence if both are provided.
-  const isInlineMode = !!args.prompt && !args.prompt_file;
+  const isInlineMode = !!args.prompt?.trim() && !args.prompt_file?.trim();
+
+  // Inline mode is foreground only - check BEFORE any file persistence to avoid leaks
+  if (isInlineMode && args.background) {
+    return {
+      content: [{ type: 'text' as const, text: 'Inline prompt mode is foreground only. Use prompt_file for background execution.' }],
+      isError: true
+    };
+  }
+
+  // Validate non-empty inline prompt
+  if (isInlineMode && !args.prompt?.trim()) {
+    return {
+      content: [{ type: 'text' as const, text: 'Inline prompt is empty. Provide a non-empty prompt string.' }],
+      isError: true
+    };
+  }
 
   if (isInlineMode) {
     // Auto-persist inline prompt to file
@@ -550,18 +566,18 @@ export async function handleAskGemini(args: {
     }
   }
 
-  // Validate output_file is provided (required in non-inline mode)
-  if (!args.output_file || !args.output_file.trim()) {
-    return {
-      content: [{ type: 'text' as const, text: 'output_file is required. Specify a path where the response should be written, or use the inline `prompt` parameter for auto-generated paths.' }],
-      isError: true
-    };
-  }
-
   // Validate prompt_file is provided (required unless inline prompt was used)
   if (!args.prompt_file || !args.prompt_file.trim()) {
     return {
       content: [{ type: 'text' as const, text: 'Either prompt (inline string) or prompt_file (path) is required.' }],
+      isError: true
+    };
+  }
+
+  // Validate output_file is provided (required in non-inline mode)
+  if (!args.output_file || !args.output_file.trim()) {
+    return {
+      content: [{ type: 'text' as const, text: 'output_file is required. Specify a path where the response should be written, or use the inline `prompt` parameter for auto-generated paths.' }],
       isError: true
     };
   }
@@ -663,14 +679,6 @@ ${resolvedPrompt}`;
   const expectedResponsePath = promptResult
     ? getExpectedResponsePath('gemini', promptResult.slug, promptResult.id, baseDir)
     : undefined;
-
-  // Inline mode is foreground only
-  if (isInlineMode && args.background) {
-    return {
-      content: [{ type: 'text' as const, text: 'Inline prompt mode is foreground only. Use prompt_file for background execution.' }],
-      isError: true
-    };
-  }
 
   // Background mode: return immediately with job metadata
   if (args.background) {
