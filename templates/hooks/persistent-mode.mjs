@@ -405,7 +405,7 @@ async function main() {
       data = JSON.parse(input);
     } catch {
       // Invalid JSON - allow stop to prevent hanging
-      process.stdout.write(JSON.stringify({ continue: true }) + "\n");
+      process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }) + "\n");
       return;
     }
 
@@ -420,13 +420,13 @@ async function main() {
     // Blocking these causes a deadlock where Claude Code cannot compact.
     // See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/213
     if (isContextLimitStop(data)) {
-      console.log(JSON.stringify({ continue: true }));
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }
 
     // Respect user abort (Ctrl+C, cancel)
     if (isUserAbort(data)) {
-      console.log(JSON.stringify({ continue: true }));
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }
 
@@ -722,7 +722,7 @@ async function main() {
 
       if (newCount > maxReinforcements) {
         // Max reinforcements reached - allow stop
-        console.log(JSON.stringify({ continue: true }));
+        console.log(JSON.stringify({ continue: true, suppressOutput: true }));
         return;
       }
 
@@ -772,7 +772,7 @@ async function main() {
 
       if (newCount > maxReinforcements) {
         // Max reinforcements reached - allow stop
-        console.log(JSON.stringify({ continue: true }));
+        console.log(JSON.stringify({ continue: true, suppressOutput: true }));
         return;
       }
 
@@ -805,7 +805,7 @@ async function main() {
     }
 
     // No blocking needed
-    console.log(JSON.stringify({ continue: true }));
+    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
   } catch (error) {
     // On any error, allow stop rather than blocking forever
     // CRITICAL: Use process.stdout.write instead of console.log to avoid
@@ -819,7 +819,7 @@ async function main() {
       // Ignore stderr errors - we just need to return valid JSON
     }
     try {
-      process.stdout.write(JSON.stringify({ continue: true }) + "\n");
+      process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }) + "\n");
     } catch {
       // If stdout write fails, the hook will timeout and Claude Code will proceed
       // This is better than hanging forever
@@ -838,7 +838,7 @@ process.on("uncaughtException", (error) => {
     // Ignore
   }
   try {
-    process.stdout.write(JSON.stringify({ continue: true }) + "\n");
+    process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }) + "\n");
   } catch {
     // If we can't write, just exit
   }
@@ -854,7 +854,7 @@ process.on("unhandledRejection", (error) => {
     // Ignore
   }
   try {
-    process.stdout.write(JSON.stringify({ continue: true }) + "\n");
+    process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }) + "\n");
   } catch {
     // If we can't write, just exit
   }
@@ -872,7 +872,7 @@ const safetyTimeout = setTimeout(() => {
     // Ignore
   }
   try {
-    process.stdout.write(JSON.stringify({ continue: true }) + "\n");
+    process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }) + "\n");
   } catch {
     // If we can't write, just exit
   }

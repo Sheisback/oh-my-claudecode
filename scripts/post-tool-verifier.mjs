@@ -9,7 +9,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { readStdin } from './lib/stdin.mjs';
 
 // Get the directory of this script to resolve the dist module
@@ -21,7 +21,7 @@ const distDir = join(__dirname, '..', 'dist', 'hooks', 'notepad');
 let setPriorityContext = null;
 let addWorkingMemoryEntry = null;
 try {
-  const notepadModule = await import(join(distDir, 'index.js'));
+  const notepadModule = await import(pathToFileURL(join(distDir, 'index.js')).href);
   setPriorityContext = notepadModule.setPriorityContext;
   addWorkingMemoryEntry = notepadModule.addWorkingMemoryEntry;
 } catch {
@@ -92,8 +92,9 @@ function getBashHistoryConfig() {
   return true; // Default: enabled
 }
 
-// Append command to ~/.bash_history
+// Append command to ~/.bash_history (Unix only - no bash_history on Windows)
 function appendToBashHistory(command) {
+  if (process.platform === 'win32') return;
   if (!command || typeof command !== 'string') return;
 
   // Clean command: trim, skip empty, skip if it's just whitespace
@@ -346,7 +347,7 @@ async function main() {
     console.log(JSON.stringify(response, null, 2));
   } catch (error) {
     // On error, always continue
-    console.log(JSON.stringify({ continue: true }));
+    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
   }
 }
 
