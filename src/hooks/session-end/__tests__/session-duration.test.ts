@@ -170,6 +170,59 @@ describe('getSessionStartTime', () => {
     expect(getSessionStartTime(tmpDir)).toBe('2026-02-11T10:00:00.000Z');
   });
 
+  it('skips malformed timestamps and still returns valid ones', () => {
+    // Malformed timestamp
+    writeState('autopilot-state.json', {
+      active: true,
+      session_id: 'current-session',
+      started_at: 'not-a-date',
+    });
+
+    // Valid timestamp
+    writeState('ultrawork-state.json', {
+      active: true,
+      session_id: 'current-session',
+      started_at: '2026-02-11T10:00:00.000Z',
+    });
+
+    const result = getSessionStartTime(tmpDir, 'current-session');
+    expect(result).toBe('2026-02-11T10:00:00.000Z');
+  });
+
+  it('returns undefined when all timestamps are malformed', () => {
+    writeState('autopilot-state.json', {
+      active: true,
+      session_id: 'current-session',
+      started_at: 'garbage',
+    });
+
+    writeState('ultrawork-state.json', {
+      active: true,
+      session_id: 'current-session',
+      started_at: '',
+    });
+
+    const result = getSessionStartTime(tmpDir, 'current-session');
+    expect(result).toBeUndefined();
+  });
+
+  it('skips malformed legacy timestamps gracefully', () => {
+    // Malformed legacy timestamp
+    writeState('ralph-state.json', {
+      active: true,
+      started_at: 'invalid-date-string',
+    });
+
+    // Valid legacy timestamp
+    writeState('ecomode-state.json', {
+      active: true,
+      started_at: '2026-02-11T14:00:00.000Z',
+    });
+
+    const result = getSessionStartTime(tmpDir, 'current-session');
+    expect(result).toBe('2026-02-11T14:00:00.000Z');
+  });
+
   it('returns undefined when only stale states exist and no legacy fallback', () => {
     writeState('autopilot-state.json', {
       active: true,
