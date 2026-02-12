@@ -13,6 +13,7 @@ import { existsSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { getClaudeConfigDir } from '../../utils/paths.js';
 import { readUltraworkState, incrementReinforcement, deactivateUltrawork, getUltraworkPersistenceMessage } from '../ultrawork/index.js';
+import { resolveToWorktreeRoot } from '../../lib/worktree-paths.js';
 import { readRalphState, incrementRalphIteration, clearRalphState, getPrdCompletionStatus, getRalphContext, readVerificationState, recordArchitectFeedback, getArchitectVerificationPrompt, getArchitectRejectionContinuationPrompt, detectArchitectApproval, detectArchitectRejection, clearVerificationState } from '../ralph/index.js';
 import { checkIncompleteTodos, getNextPendingTodo, isUserAbort, isContextLimitStop } from '../todo-continuation/index.js';
 import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
@@ -178,7 +179,7 @@ function checkArchitectRejectionInTranscript(sessionId) {
  * Now includes Architect verification for completion claims
  */
 async function checkRalphLoop(sessionId, directory) {
-    const workingDir = directory || process.cwd();
+    const workingDir = resolveToWorktreeRoot(directory);
     const state = readRalphState(workingDir, sessionId);
     if (!state || !state.active) {
         return null;
@@ -435,7 +436,7 @@ ${TODO_CONTINUATION_PROMPT}
  */
 export async function checkPersistentModes(sessionId, directory, stopContext // NEW: from todo-continuation types
 ) {
-    const workingDir = directory || process.cwd();
+    const workingDir = resolveToWorktreeRoot(directory);
     // CRITICAL: Never block context-limit stops.
     // Blocking these causes a deadlock where Claude Code cannot compact.
     // See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/213

@@ -392,8 +392,37 @@ export function ensureSessionStateDir(sessionId: string, worktreeRoot?: string):
 }
 
 /**
+ * Resolve a directory path to its git worktree root.
+ *
+ * Walks up from `directory` using `git rev-parse --show-toplevel`.
+ * Falls back to `getWorktreeRoot(process.cwd())`, then `process.cwd()`.
+ *
+ * This ensures .omc/ state is always written at the worktree root,
+ * even when called from a subdirectory (fixes #576).
+ *
+ * @param directory - Any directory inside a git worktree (optional)
+ * @returns The worktree root (never a subdirectory)
+ */
+export function resolveToWorktreeRoot(directory?: string): string {
+  if (directory) {
+    const resolved = resolve(directory);
+    const root = getWorktreeRoot(resolved);
+    if (root) return root;
+
+    console.error('[worktree] non-git directory provided, falling back to process root', {
+      directory: resolved,
+    });
+  }
+  // Fallback: derive from process CWD (the MCP server / CLI entry point)
+  return getWorktreeRoot(process.cwd()) || process.cwd();
+}
+
+/**
  * Validate that a workingDirectory is within the trusted worktree root.
  * The trusted root is derived from process.cwd(), NOT from user input.
+ *
+ * Always returns a git worktree root — never a subdirectory.
+ * This prevents .omc/state/ from being created in subdirectories (#576).
  *
  * @param workingDirectory - User-supplied working directory
  * @returns The validated worktree root
@@ -409,27 +438,53 @@ export function validateWorkingDirectory(workingDirectory?: string): string {
   // Resolve to absolute
   const resolved = resolve(workingDirectory);
 
-  // Get the worktree root for the provided directory
-  const providedRoot = getWorktreeRoot(resolved) || resolved;
-
-  // Ensure provided root matches trusted root
   let trustedRootReal: string;
-  let providedRootReal: string;
   try {
     trustedRootReal = realpathSync(trustedRoot);
   } catch {
     trustedRootReal = trustedRoot;
   }
+
+  // Try to resolve the provided directory to a git worktree root.
+  const providedRoot = getWorktreeRoot(resolved);
+
+  if (providedRoot) {
+    // Git resolution succeeded — require exact worktree identity.
+    let providedRootReal: string;
+    try {
+      providedRootReal = realpathSync(providedRoot);
+    } catch {
+      throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
+    }
+
+    if (providedRootReal !== trustedRootReal) {
+      console.error('[worktree] workingDirectory resolved to different git worktree root, using trusted root', {
+        workingDirectory: resolved,
+        providedRoot: providedRootReal,
+        trustedRoot: trustedRootReal,
+      });
+      return trustedRoot;
+    }
+
+    return providedRoot;
+  }
+
+  // Git resolution failed (lock contention, env issues, non-repo dir).
+  // Validate that the raw directory is under the trusted root before falling
+  // back — otherwise reject it as truly outside (#576).
+  let resolvedReal: string;
   try {
-    providedRootReal = realpathSync(providedRoot);
+    resolvedReal = realpathSync(resolved);
   } catch {
     throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
   }
 
-  const rel = relative(trustedRootReal, providedRootReal);
+  const rel = relative(trustedRootReal, resolvedReal);
   if (rel.startsWith('..') || isAbsolute(rel)) {
     throw new Error(`workingDirectory '${workingDirectory}' is outside the trusted worktree root '${trustedRoot}'.`);
   }
 
-  return providedRoot;
+  // Directory is under trusted root but git failed — return trusted root,
+  // never the subdirectory, to prevent .omc/ creation in subdirs (#576).
+  return trustedRoot;
 }

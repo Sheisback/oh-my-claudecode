@@ -21227,24 +21227,41 @@ function validateWorkingDirectory(workingDirectory) {
     return trustedRoot;
   }
   const resolved = (0, import_path7.resolve)(workingDirectory);
-  const providedRoot = getWorktreeRoot(resolved) || resolved;
   let trustedRootReal;
-  let providedRootReal;
   try {
     trustedRootReal = (0, import_fs6.realpathSync)(trustedRoot);
   } catch {
     trustedRootReal = trustedRoot;
   }
+  const providedRoot = getWorktreeRoot(resolved);
+  if (providedRoot) {
+    let providedRootReal;
+    try {
+      providedRootReal = (0, import_fs6.realpathSync)(providedRoot);
+    } catch {
+      throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
+    }
+    if (providedRootReal !== trustedRootReal) {
+      console.error("[worktree] workingDirectory resolved to different git worktree root, using trusted root", {
+        workingDirectory: resolved,
+        providedRoot: providedRootReal,
+        trustedRoot: trustedRootReal
+      });
+      return trustedRoot;
+    }
+    return providedRoot;
+  }
+  let resolvedReal;
   try {
-    providedRootReal = (0, import_fs6.realpathSync)(providedRoot);
+    resolvedReal = (0, import_fs6.realpathSync)(resolved);
   } catch {
     throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
   }
-  const rel = (0, import_path7.relative)(trustedRootReal, providedRootReal);
+  const rel = (0, import_path7.relative)(trustedRootReal, resolvedReal);
   if (rel.startsWith("..") || (0, import_path7.isAbsolute)(rel)) {
     throw new Error(`workingDirectory '${workingDirectory}' is outside the trusted worktree root '${trustedRoot}'.`);
   }
-  return providedRoot;
+  return trustedRoot;
 }
 
 // src/hooks/mode-registry/index.ts

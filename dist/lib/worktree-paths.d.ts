@@ -170,8 +170,24 @@ export declare function listSessionIds(worktreeRoot?: string): string[];
  */
 export declare function ensureSessionStateDir(sessionId: string, worktreeRoot?: string): string;
 /**
+ * Resolve a directory path to its git worktree root.
+ *
+ * Walks up from `directory` using `git rev-parse --show-toplevel`.
+ * Falls back to `getWorktreeRoot(process.cwd())`, then `process.cwd()`.
+ *
+ * This ensures .omc/ state is always written at the worktree root,
+ * even when called from a subdirectory (fixes #576).
+ *
+ * @param directory - Any directory inside a git worktree (optional)
+ * @returns The worktree root (never a subdirectory)
+ */
+export declare function resolveToWorktreeRoot(directory?: string): string;
+/**
  * Validate that a workingDirectory is within the trusted worktree root.
  * The trusted root is derived from process.cwd(), NOT from user input.
+ *
+ * Always returns a git worktree root — never a subdirectory.
+ * This prevents .omc/state/ from being created in subdirectories (#576).
  *
  * @param workingDirectory - User-supplied working directory
  * @returns The validated worktree root

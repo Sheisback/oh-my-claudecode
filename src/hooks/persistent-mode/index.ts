@@ -19,6 +19,7 @@ import {
   deactivateUltrawork,
   getUltraworkPersistenceMessage
 } from '../ultrawork/index.js';
+import { resolveToWorktreeRoot } from '../../lib/worktree-paths.js';
 import {
   readRalphState,
   incrementRalphIteration,
@@ -249,7 +250,7 @@ async function checkRalphLoop(
   sessionId?: string,
   directory?: string
 ): Promise<PersistentModeResult | null> {
-  const workingDir = directory || process.cwd();
+  const workingDir = resolveToWorktreeRoot(directory);
   const state = readRalphState(workingDir, sessionId);
 
   if (!state || !state.active) {
@@ -548,7 +549,7 @@ export async function checkPersistentModes(
   directory?: string,
   stopContext?: StopContext  // NEW: from todo-continuation types
 ): Promise<PersistentModeResult> {
-  const workingDir = directory || process.cwd();
+  const workingDir = resolveToWorktreeRoot(directory);
 
   // CRITICAL: Never block context-limit stops.
   // Blocking these causes a deadlock where Claude Code cannot compact.

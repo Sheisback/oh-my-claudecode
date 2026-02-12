@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync } from 'fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdirSync, rmSync, existsSync, mkdtempSync } from 'fs';
+import { execSync } from 'child_process';
 import { join } from 'path';
-import { validatePath, resolveOmcPath, resolveStatePath, ensureOmcDir, getWorktreeNotepadPath, getWorktreeProjectMemoryPath, getOmcRoot, resolvePlanPath, resolveResearchPath, resolveLogsPath, resolveWisdomPath, isPathUnderOmc, ensureAllOmcDirs, clearWorktreeCache, getProcessSessionId, resetProcessSessionId, validateSessionId, } from '../worktree-paths.js';
+import { validatePath, resolveOmcPath, resolveStatePath, ensureOmcDir, getWorktreeNotepadPath, getWorktreeProjectMemoryPath, getOmcRoot, resolvePlanPath, resolveResearchPath, resolveLogsPath, resolveWisdomPath, isPathUnderOmc, ensureAllOmcDirs, clearWorktreeCache, getProcessSessionId, resetProcessSessionId, validateSessionId, resolveToWorktreeRoot, validateWorkingDirectory, getWorktreeRoot, } from '../worktree-paths.js';
 const TEST_DIR = '/tmp/worktree-paths-test';
 describe('worktree-paths', () => {
     beforeEach(() => {
@@ -107,6 +108,80 @@ describe('worktree-paths', () => {
             expect(existsSync(join(TEST_DIR, '.omc', 'logs'))).toBe(true);
             expect(existsSync(join(TEST_DIR, '.omc', 'notepads'))).toBe(true);
             expect(existsSync(join(TEST_DIR, '.omc', 'drafts'))).toBe(true);
+        });
+    });
+    describe('resolveToWorktreeRoot', () => {
+        it('should return process.cwd()-based root when no directory provided', () => {
+            const result = resolveToWorktreeRoot();
+            // We are inside a git repo, so it should return a real root
+            expect(result).toBeTruthy();
+            expect(typeof result).toBe('string');
+        });
+        it('should resolve a subdirectory to its git worktree root', () => {
+            // Use the current repo - create a subdir and verify it resolves to root
+            const root = getWorktreeRoot(process.cwd());
+            if (!root)
+                return; // skip if not in a git repo
+            const subdir = join(root, 'src');
+            const result = resolveToWorktreeRoot(subdir);
+            expect(result).toBe(root);
+        });
+        it('should fall back and log for non-git directories', () => {
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+            const nonGitDir = mkdtempSync('/tmp/worktree-paths-nongit-');
+            const result = resolveToWorktreeRoot(nonGitDir);
+            // non-git directory should fall back to process.cwd root
+            const expectedRoot = getWorktreeRoot(process.cwd()) || process.cwd();
+            expect(result).toBe(expectedRoot);
+            expect(errorSpy).toHaveBeenCalledWith('[worktree] non-git directory provided, falling back to process root', { directory: nonGitDir });
+            errorSpy.mockRestore();
+            rmSync(nonGitDir, { recursive: true, force: true });
+        });
+        it('should handle bare repositories by falling back and logging', () => {
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+            const bareRepoDir = mkdtempSync('/tmp/worktree-paths-bare-');
+            execSync('git init --bare', { cwd: bareRepoDir, stdio: 'pipe' });
+            const result = resolveToWorktreeRoot(bareRepoDir);
+            const expectedRoot = getWorktreeRoot(process.cwd()) || process.cwd();
+            expect(result).toBe(expectedRoot);
+            expect(errorSpy).toHaveBeenCalledWith('[worktree] non-git directory provided, falling back to process root', { directory: bareRepoDir });
+            errorSpy.mockRestore();
+            rmSync(bareRepoDir, { recursive: true, force: true });
+        });
+    });
+    describe('validateWorkingDirectory (#576)', () => {
+        it('should return worktree root even when workingDirectory is a subdirectory', () => {
+            // This is the core #576 fix: a subdirectory must never be returned
+            const root = getWorktreeRoot(process.cwd());
+            if (!root)
+                return; // skip if not in a git repo
+            const subdir = join(root, 'src');
+            const result = validateWorkingDirectory(subdir);
+            expect(result).toBe(root);
+        });
+        it('should return trusted root when no workingDirectory provided', () => {
+            const root = getWorktreeRoot(process.cwd()) || process.cwd();
+            const result = validateWorkingDirectory();
+            expect(result).toBe(root);
+        });
+        it('should throw for directories outside the trusted root', () => {
+            // /etc is outside any repo worktree root
+            expect(() => validateWorkingDirectory('/etc')).toThrow('outside the trusted worktree root');
+        });
+        it('should reject a workingDirectory that resolves to a different git root', () => {
+            const nestedRepoDir = mkdtempSync('/tmp/worktree-paths-nested-');
+            execSync('git init', { cwd: nestedRepoDir, stdio: 'pipe' });
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+            const result = validateWorkingDirectory(nestedRepoDir);
+            const trustedRoot = getWorktreeRoot(process.cwd()) || process.cwd();
+            expect(result).toBe(trustedRoot);
+            expect(errorSpy).toHaveBeenCalledWith('[worktree] workingDirectory resolved to different git worktree root, using trusted root', expect.objectContaining({
+                workingDirectory: nestedRepoDir,
+                providedRoot: expect.any(String),
+                trustedRoot: expect.any(String),
+            }));
+            errorSpy.mockRestore();
+            rmSync(nestedRepoDir, { recursive: true, force: true });
         });
     });
     describe('getProcessSessionId (Issue #456)', () => {

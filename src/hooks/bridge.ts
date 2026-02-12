@@ -16,6 +16,7 @@
 import { pathToFileURL } from 'url';
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { resolveToWorktreeRoot } from "../lib/worktree-paths.js";
 
 // Hot-path imports: needed on every/most hook invocations (keyword-detector, pre/post-tool-use)
 import { removeCodeBlocks, getAllKeywords } from "./keyword-detector/index.js";
@@ -300,7 +301,7 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
   }
 
   const sessionId = input.sessionId;
-  const directory = input.directory || process.cwd();
+  const directory = resolveToWorktreeRoot(input.directory);
   const messages: string[] = [];
 
   // Process each keyword and collect messages
@@ -386,7 +387,7 @@ async function processStopContinuation(_input: HookInput): Promise<HookOutput> {
  */
 async function processRalph(input: HookInput): Promise<HookOutput> {
   const sessionId = input.sessionId;
-  const directory = input.directory || process.cwd();
+  const directory = resolveToWorktreeRoot(input.directory);
 
   if (!sessionId) {
     return { continue: true };
@@ -470,7 +471,7 @@ ${newState.prompt}`;
  */
 async function processPersistentMode(input: HookInput): Promise<HookOutput> {
   const sessionId = input.sessionId;
-  const directory = input.directory || process.cwd();
+  const directory = resolveToWorktreeRoot(input.directory);
 
   // Lazy-load persistent-mode and todo-continuation modules
   const { checkPersistentModes, createHookOutput } = await import("./persistent-mode/index.js");
@@ -544,7 +545,7 @@ When team verification passes or cancel is requested, allow terminal cleanup beh
  */
 async function processSessionStart(input: HookInput): Promise<HookOutput> {
   const sessionId = input.sessionId;
-  const directory = input.directory || process.cwd();
+  const directory = resolveToWorktreeRoot(input.directory);
 
   // Lazy-load session-start dependencies
   const { initSilentAutoUpdate } = await import("../features/auto-update.js");
@@ -675,7 +676,7 @@ Please continue working on these tasks.
  * Checks delegation enforcement and tracks background tasks
  */
 function processPreToolUse(input: HookInput): HookOutput {
-  const directory = input.directory || process.cwd();
+  const directory = resolveToWorktreeRoot(input.directory);
 
   // Check delegation enforcement FIRST
   const enforcementResult = processOrchestratorPreTool({
@@ -802,7 +803,7 @@ function processPreToolUse(input: HookInput): HookOutput {
  * Process post-tool-use hook
  */
 function processPostToolUse(input: HookInput): HookOutput {
-  const directory = input.directory || process.cwd();
+  const directory = resolveToWorktreeRoot(input.directory);
   const messages: string[] = [];
 
   // Run orchestrator post-tool processing (remember tags, verification reminders, etc.)
@@ -843,7 +844,7 @@ function processPostToolUse(input: HookInput): HookOutput {
  * Manages autopilot state and injects phase prompts
  */
 async function processAutopilot(input: HookInput): Promise<HookOutput> {
-  const directory = input.directory || process.cwd();
+  const directory = resolveToWorktreeRoot(input.directory);
 
   // Lazy-load autopilot module
   const { readAutopilotState, getPhasePrompt } = await import("./autopilot/index.js");

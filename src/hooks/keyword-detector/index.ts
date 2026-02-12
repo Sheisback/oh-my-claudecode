@@ -137,6 +137,25 @@ export function extractPromptText(
 }
 
 /**
+ * Sanitize text to prevent false positives from tags, URLs, file paths, and code.
+ */
+export function sanitizeForKeywordDetection(text: string): string {
+  return text
+    // Strip XML-style tag blocks: <tag-name ...>...</tag-name>
+    .replace(/<(\w[\w-]*)[\s>][\s\S]*?<\/\1>/g, '')
+    // Strip self-closing XML tags: <tag-name />, <tag-name attr="val" />
+    .replace(/<\w[\w-]*(?:\s[^>]*)?\s*\/>/g, '')
+    // Strip URLs: http://... or https://... up to whitespace
+    .replace(/https?:\/\/[^\s)>\]]+/g, '')
+    // Strip file paths while preserving the leading delimiter
+    .replace(/(^|[\s"'`(])(?:\/)?(?:[\w.-]+\/)+[\w.-]+/gm, '$1')
+    // Strip markdown code blocks
+    .replace(/```[\s\S]*?```/g, '')
+    // Strip inline code
+    .replace(/`[^`]+`/g, '');
+}
+
+/**
  * Detect keywords in text and return matches with type info
  */
 export function detectKeywordsWithType(
