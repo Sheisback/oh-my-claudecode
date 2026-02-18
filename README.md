@@ -65,10 +65,13 @@ Enable Claude Code native teams in `~/.claude/settings.json`:
 ### Updating
 
 ```bash
-# 1. Update the plugin
+# 1. Sync the marketplace to fetch the latest version
+/plugin marketplace update https://github.com/Yeachan-Heo/oh-my-claudecode
+
+# 2. Reinstall the plugin from the updated marketplace
 /plugin install oh-my-claudecode
 
-# 2. Re-run setup to refresh configuration
+# 3. Re-run setup to refresh configuration
 /oh-my-claudecode:omc-setup
 ```
 

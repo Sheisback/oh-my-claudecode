@@ -65,10 +65,13 @@ Bật Claude Code native teams trong `~/.claude/settings.json`:
 ### Cập nhật
 
 ```bash
-# 1. Update the plugin
+# 1. Đồng bộ marketplace để lấy phiên bản mới nhất
+/plugin marketplace update https://github.com/Yeachan-Heo/oh-my-claudecode
+
+# 2. Cài lại plugin từ marketplace đã cập nhật
 /plugin install oh-my-claudecode
 
-# 2. Re-run setup to refresh configuration
+# 3. Chạy lại setup để làm mới cấu hình
 /oh-my-claudecode:omc-setup
 ```
 

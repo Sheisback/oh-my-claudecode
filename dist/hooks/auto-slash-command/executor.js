@@ -8,6 +8,7 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join, basename } from 'path';
 import { getClaudeConfigDir } from '../../utils/paths.js';
+import { CC_NATIVE_COMMANDS } from './constants.js';
 import { resolveLiveData } from './live-data.js';
 /** Claude config directory */
 const CLAUDE_CONFIG_DIR = getClaudeConfigDir();
@@ -105,15 +106,22 @@ export function discoverAllCommands() {
                     try {
                         const content = readFileSync(skillPath, 'utf-8');
                         const { data, body } = parseFrontmatter(content);
+                        const skillName = data.name || dir.name;
+                        // Skip skills whose short name conflicts with a Claude Code native command.
+                        // Such skills are registered under an 'omc-' prefix in the builtin registry
+                        // and should not be discovered or expanded here.
+                        if (CC_NATIVE_COMMANDS.has(skillName.toLowerCase())) {
+                            continue;
+                        }
                         const metadata = {
-                            name: data.name || dir.name,
+                            name: skillName,
                             description: data.description || '',
                             argumentHint: data['argument-hint'],
                             model: data.model,
                             agent: data.agent,
                         };
                         skillCommands.push({
-                            name: data.name || dir.name,
+                            name: skillName,
                             path: skillPath,
                             metadata,
                             content: body,
