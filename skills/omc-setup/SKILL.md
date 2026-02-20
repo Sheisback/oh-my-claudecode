@@ -1114,3 +1114,24 @@ EXAMPLES:
 
 For more info: https://github.com/Yeachan-Heo/oh-my-claudecode
 ```
+
+## Optional Rule Templates
+
+OMC includes rule templates you can copy to your project's `.claude/rules/` directory for automatic context injection:
+
+| Template | Purpose |
+|----------|---------|
+| `coding-style.md` | Code style, immutability, file organization |
+| `testing.md` | TDD workflow, 80% coverage target |
+| `security.md` | Secret management, input validation |
+| `performance.md` | Model selection, context management |
+| `git-workflow.md` | Commit conventions, PR workflow |
+| `karpathy-guidelines.md` | Coding discipline — think before coding, simplicity, surgical changes |
+
+Copy with:
+```bash
+mkdir -p .claude/rules
+cp "${CLAUDE_PLUGIN_ROOT}/templates/rules/"*.md .claude/rules/
+```
+
+See `templates/rules/README.md` for details.
