@@ -74,7 +74,7 @@ parallel(explore, document-specialist) -> architect -> executor
 **Stages:**
 1. `planner` - Create detailed implementation plan
 2. `executor` - Implement the plan
-3. `tdd-guide` - Add/verify tests
+3. `test-engineer` - Add/verify tests
 
 **Use for:** New features with clear requirements
 
@@ -334,7 +334,7 @@ When parallel agents complete:
 
 ### Example 3: Custom Chain
 ```
-/pipeline explore:haiku -> architect:opus -> executor:sonnet -> tdd-guide:sonnet "refactor auth module"
+/pipeline explore:haiku -> architect:opus -> executor:sonnet -> test-engineer:sonnet "refactor auth module"
 ```
 
 ### Example 4: Research-Driven Implementation
