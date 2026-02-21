@@ -1,3 +1,70 @@
+# oh-my-claudecode v4.3.1: Agent Registry Consolidation
+
+This release completes the Phase 3 agent catalog cleanup. The registry shrinks from **30 → 21 canonical agents**. All removed agents are replaced by deprecation-aware aliases that auto-route to their canonical successors — **no user action required** for most users.
+
+> **Migration note:** If you hard-code agent names in custom `CLAUDE.md` files, task prompts, or automation scripts, check the alias table below. Old names still work but will route silently to the canonical agent.
+
+---
+
+### Changed: Agent Registry (30 → 21 agents)
+
+**Review Lane** — 5 specialized reviewers collapsed into 3:
+
+| Removed | Now handled by |
+|---------|---------------|
+| `style-reviewer` | `quality-reviewer` (use `model=haiku` for style-only checks) |
+| `api-reviewer` | `code-reviewer` |
+| `performance-reviewer` | `quality-reviewer` |
+
+**Domain Specialists** — 3 specialists removed or renamed:
+
+| Removed | Now handled by |
+|---------|---------------|
+| `dependency-expert` | `document-specialist` |
+| `quality-strategist` | `quality-reviewer` |
+
+**Product Lane** — fully removed (4 agents):
+
+`product-manager`, `ux-researcher`, `information-architect`, `product-analyst` have been removed from the registry. These were low-utilization and overlapped with `analyst`, `planner`, and `designer`.
+
+**Coordination** — `vision` removed:
+
+`vision` (image analysis) → `document-specialist`. The `critic` agent remains the sole coordination agent.
+
+---
+
+### Auto-Routing for Deprecated Names
+
+A new `normalizeDelegationRole()` function silently maps old names to canonical ones at runtime. The full alias table:
+
+| Old name | Routes to |
+|---------|-----------|
+| `researcher` | `document-specialist` |
+| `tdd-guide` | `test-engineer` |
+| `api-reviewer` | `code-reviewer` |
+| `performance-reviewer` | `quality-reviewer` |
+| `dependency-expert` | `document-specialist` |
+| `quality-strategist` | `quality-reviewer` |
+| `vision` | `document-specialist` |
+
+---
+
+### Added
+
+- **Deprecation metadata on skills** (`deprecatedAlias`, `deprecationMessage` fields on `BuiltinSkill`) — foundation for future migration warnings in the auto-slash-command system.
+- **`listBuiltinSkillNames({ includeAliases })`** — returns 35 canonical skills by default; pass `{ includeAliases: true }` to include `swarm` and `psm` aliases (37 total).
+- **`DEPRECATED_ROLE_ALIASES` map** — runtime lookup for auto-routing deprecated agent names to canonical agents.
+- **`deep-executor` restored** — was accidentally dropped from the TypeScript registry in v4.3.0; re-added with full export and `getAgentDefinitions()` entry.
+- **Phase 3 roadmap doc** at `docs/design/CONSOLIDATION_PHASE3_ROADMAP.md`.
+
+### Fixed
+
+- **Skill files referenced `tdd-guide`, `performance-reviewer`, `product-manager`** — `skills/tdd`, `skills/pipeline`, `skills/ccg`, `skills/team` updated to use canonical names.
+- **Agent prompt role boundaries referenced removed agents** — `quality-reviewer`, `security-reviewer`, `debugger`, `verifier`, `test-engineer` prompt files updated to remove dangling `(style-reviewer)`, `(performance-reviewer)`, `(api-reviewer)` parentheticals.
+- **`docs/CLAUDE.md` deprecated aliases incomplete** — all 7 deprecated aliases now listed explicitly.
+
+---
+
 # oh-my-claudecode v4.2.15
 
 ### Added
