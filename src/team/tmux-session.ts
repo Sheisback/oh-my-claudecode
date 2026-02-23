@@ -172,6 +172,18 @@ export async function createTeamSession(
 
   const workerPaneIds: string[] = [];
 
+  if (workerCount <= 0) {
+    // Leader-only topology: no worker panes yet (spawned on demand later).
+    try {
+      await execFileAsync('tmux', ['set-option', '-t', resolvedSessionName, 'mouse', 'on']);
+    } catch { /* ignore */ }
+    try {
+      await execFileAsync('tmux', ['select-pane', '-t', leaderPaneId]);
+    } catch { /* ignore */ }
+    await new Promise(r => setTimeout(r, 300));
+    return { sessionName: teamTarget, leaderPaneId, workerPaneIds };
+  }
+
   // Create worker panes: first via horizontal split off leader, rest stacked vertically on right
   for (let i = 0; i < workerCount; i++) {
     const splitTarget = i === 0 ? leaderPaneId : workerPaneIds[i - 1];
@@ -484,4 +496,3 @@ export async function killTeamSession(
     // Session may already be dead
   }
 }
-

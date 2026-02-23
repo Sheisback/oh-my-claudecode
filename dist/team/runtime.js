@@ -1,8 +1,8 @@
-import { mkdir, writeFile, readFile, rm, appendFile } from 'fs/promises';
+import { mkdir, writeFile, readFile, rm, rename } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { buildWorkerCommand, validateCliAvailable, getWorkerEnv as getModelWorkerEnv } from './model-contract.js';
-import { createTeamSession, spawnWorkerInPane, sendToWorker, isWorkerAlive, killTeamSession, injectToLeaderPane, } from './tmux-session.js';
+import { createTeamSession, spawnWorkerInPane, sendToWorker, isWorkerAlive, killTeamSession, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, } from './worker-bootstrap.js';
 function workerName(index) {
     return `worker-${index + 1}`;
@@ -23,6 +23,88 @@ async function readJsonSafe(filePath) {
         return null;
     }
 }
+function parseWorkerIndex(workerNameValue) {
+    const match = workerNameValue.match(/^worker-(\d+)$/);
+    if (!match)
+        return 0;
+    const parsed = Number.parseInt(match[1], 10) - 1;
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+function taskPath(root, taskId) {
+    return join(root, 'tasks', `${taskId}.json`);
+}
+async function writePanesTrackingFileIfPresent(runtime) {
+    const jobId = process.env.OMC_JOB_ID;
+    const omcJobsDir = process.env.OMC_JOBS_DIR;
+    if (!jobId || !omcJobsDir)
+        return;
+    const panesPath = join(omcJobsDir, `${jobId}-panes.json`);
+    const tempPath = `${panesPath}.tmp`;
+    await writeFile(tempPath, JSON.stringify({ paneIds: [...runtime.workerPaneIds], leaderPaneId: runtime.leaderPaneId }), 'utf-8');
+    await rename(tempPath, panesPath);
+}
+async function readTask(root, taskId) {
+    return readJsonSafe(taskPath(root, taskId));
+}
+async function writeTask(root, task) {
+    await writeJson(taskPath(root, task.id), task);
+}
+async function markTaskInProgress(root, taskId, owner) {
+    const task = await readTask(root, taskId);
+    if (!task || task.status !== 'pending')
+        return false;
+    task.status = 'in_progress';
+    task.owner = owner;
+    task.assignedAt = new Date().toISOString();
+    await writeTask(root, task);
+    return true;
+}
+async function markTaskFromDone(root, taskId, status, summary) {
+    const task = await readTask(root, taskId);
+    if (!task)
+        return;
+    task.status = status;
+    task.result = summary;
+    task.summary = summary;
+    if (status === 'completed') {
+        task.completedAt = new Date().toISOString();
+    }
+    else {
+        task.failedAt = new Date().toISOString();
+    }
+    await writeTask(root, task);
+}
+async function markTaskFailedDeadPane(root, taskId, workerNameValue) {
+    const task = await readTask(root, taskId);
+    if (!task)
+        return;
+    task.status = 'failed';
+    task.owner = workerNameValue;
+    task.summary = `Worker pane died before done.json was written (${workerNameValue})`;
+    task.result = task.summary;
+    task.failedAt = new Date().toISOString();
+    await writeTask(root, task);
+}
+async function nextPendingTaskIndex(runtime) {
+    const root = stateRoot(runtime.cwd, runtime.teamName);
+    for (let i = 0; i < runtime.config.tasks.length; i++) {
+        const task = await readTask(root, String(i + 1));
+        if (task?.status === 'pending')
+            return i;
+    }
+    return null;
+}
+export async function allTasksTerminal(runtime) {
+    const root = stateRoot(runtime.cwd, runtime.teamName);
+    for (let i = 0; i < runtime.config.tasks.length; i++) {
+        const task = await readTask(root, String(i + 1));
+        if (!task)
+            return false;
+        if (task.status !== 'completed' && task.status !== 'failed')
+            return false;
+    }
+    return true;
+}
 /**
  * Build the initial task instruction written to a worker's inbox.
  * Includes task ID, subject, full description, and done-signal path.
@@ -39,13 +121,15 @@ function buildInitialTaskInstruction(teamName, workerName, task, taskId) {
         ``,
         `When complete, write done signal to ${donePath}:`,
         `{"taskId":"${taskId}","status":"completed","summary":"<brief summary>","completedAt":"<ISO timestamp>"}`,
+        ``,
+        `IMPORTANT: Execute ONLY the task assigned to you in this inbox. After writing done.json, exit immediately. Do not read from the task directory or claim other tasks.`,
     ].join('\n');
 }
 /**
  * Start a new team: create tmux session, spawn workers, wait for ready.
  */
 export async function startTeam(config) {
-    const { teamName, workerCount, agentTypes, tasks, cwd } = config;
+    const { teamName, agentTypes, tasks, cwd } = config;
     // Validate CLIs are available
     for (const agentType of [...new Set(agentTypes)]) {
         validateCliAvailable(agentType);
@@ -68,88 +152,42 @@ export async function startTeam(config) {
             createdAt: new Date().toISOString(),
         });
     }
-    // Set up worker state dirs and overlays
+    // Set up worker state dirs and overlays for all potential workers up front
+    // (overlays are cheap; workers are spawned on-demand later)
     const workerNames = [];
-    for (let i = 0; i < workerCount; i++) {
+    for (let i = 0; i < tasks.length; i++) {
         const wName = workerName(i);
         workerNames.push(wName);
-        const agentType = agentTypes[i] ?? agentTypes[0] ?? 'claude';
+        const agentType = agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude';
         await ensureWorkerStateDir(teamName, wName, cwd);
         await writeWorkerOverlay({
             teamName, workerName: wName, agentType,
             tasks: tasks.map((t, idx) => ({ id: String(idx + 1), subject: t.subject, description: t.description })),
             cwd,
         });
-        await composeInitialInbox(teamName, wName, `# Welcome, ${wName}\n\nRead your AGENTS.md overlay at .omc/state/team/${teamName}/workers/${wName}/AGENTS.md\n\nWrite your ready sentinel first, then claim tasks from .omc/state/team/${teamName}/tasks/`, cwd);
     }
-    // Create tmux session with split panes
-    const session = await createTeamSession(teamName, workerCount, cwd);
-    // Spawn CLI agents in each pane
-    for (let i = 0; i < workerCount; i++) {
-        const wName = workerNames[i];
-        const agentType = agentTypes[i] ?? agentTypes[0] ?? 'claude';
-        const paneId = session.workerPaneIds[i];
-        const envVars = getModelWorkerEnv(teamName, wName, agentType);
-        const launchCmd = buildWorkerCommand(agentType, { teamName, workerName: wName, cwd });
-        const paneConfig = { teamName, workerName: wName, envVars, launchCmd, cwd };
-        await spawnWorkerInPane(session.sessionName, paneId, paneConfig);
-    }
-    // Wait for workers to be ready / seed them with initial tasks
-    await Promise.all(workerNames.map(async (wName, i) => {
-        const agentType = agentTypes[i] ?? agentTypes[0] ?? 'claude';
-        const paneId = session.workerPaneIds[i];
-        // All agent types: wait for CLI startup, then deliver task via inbox file.
-        // Natural-language trigger works for claude, codex, and gemini.
-        await new Promise(r => setTimeout(r, 4000));
-        // Gemini shows a "Trust folder?" dialog before accepting input — send '1' to trust
-        if (agentType === 'gemini') {
-            await sendToWorker(session.sessionName, paneId, '1');
-            await new Promise(r => setTimeout(r, 800));
-        }
-        // Deliver full task via inbox file to avoid 200-char tmux limit.
-        // Write to inbox first, then send natural-language read trigger.
-        const task = tasks[i] ?? tasks[0];
-        if (task) {
-            const taskId = String(i + 1);
-            const instruction = buildInitialTaskInstruction(teamName, wName, task, taskId);
-            const inboxPath = join(cwd, `.omc/state/team/${teamName}/workers/${wName}/inbox.md`);
-            await appendFile(inboxPath, `\n\n---\n${instruction}\n_queued: ${new Date().toISOString()}_\n`, 'utf-8');
-            const relPath = `.omc/state/team/${teamName}/workers/${wName}/inbox.md`;
-            await sendToWorker(session.sessionName, paneId, `Read and execute your task from: ${relPath}`);
-        }
-    }));
-    // Start watchdog for all CLI workers — claude now writes done.json too
-    const hasCliWorkers = agentTypes.length > 0;
-    let stopWatchdog;
-    if (hasCliWorkers) {
-        stopWatchdog = watchdogCliWorkers(teamName, workerNames, cwd, 3000, async (event) => {
-            // Inject completion message into leader pane
-            const msg = `[${event.workerName} ${event.status}] ${event.summary}`;
-            const ok = await injectToLeaderPane(session.sessionName, session.leaderPaneId, msg);
-            if (!ok) {
-                console.warn(`[watchdog] Failed to inject completion message for ${event.workerName}`);
-            }
-            // Update task file status
-            const taskPath = join(root, 'tasks', `${event.taskId}.json`);
-            const task = await readJsonSafe(taskPath);
-            if (task && task.status !== 'completed') {
-                task.status = event.status === 'completed' ? 'completed' : 'failed';
-                task.result = event.summary;
-                task.completedAt = new Date().toISOString();
-                await writeJson(taskPath, task);
-            }
-        });
-    }
-    return {
+    // Create tmux session with ZERO worker panes (leader only).
+    // Workers are spawned on-demand by the orchestrator.
+    const session = await createTeamSession(teamName, 0, cwd);
+    const runtime = {
         teamName,
         sessionName: session.sessionName,
         leaderPaneId: session.leaderPaneId,
         config,
         workerNames,
-        workerPaneIds: session.workerPaneIds,
+        workerPaneIds: session.workerPaneIds, // initially empty []
+        activeWorkers: new Map(),
         cwd,
-        stopWatchdog,
     };
+    const maxConcurrentWorkers = agentTypes.length;
+    for (let i = 0; i < maxConcurrentWorkers; i++) {
+        const taskIndex = await nextPendingTaskIndex(runtime);
+        if (taskIndex == null)
+            break;
+        await spawnWorkerForTask(runtime, workerName(i), taskIndex);
+    }
+    runtime.stopWatchdog = watchdogCliWorkers(runtime, 1000);
+    return runtime;
 }
 /**
  * Monitor team: poll worker health, detect stalls, return snapshot.
@@ -216,46 +254,155 @@ export async function monitorTeam(teamName, cwd, workerPaneIds) {
     return { teamName, phase, workers, taskCounts, deadWorkers };
 }
 /**
- * Poll for all worker done.json sentinel files (claude, codex, gemini).
- * Returns a stop function that clears the interval.
+ * Runtime-owned worker watchdog/orchestrator loop.
+ * Handles done.json completion, dead pane failures, and next-task spawning.
  */
-export function watchdogCliWorkers(teamName, workerNames, cwd, intervalMs, onComplete) {
-    const processed = new Set();
+export function watchdogCliWorkers(runtime, intervalMs) {
+    let tickInFlight = false;
     const tick = async () => {
-        for (let i = 0; i < workerNames.length; i++) {
-            const wName = workerNames[i];
-            if (processed.has(wName))
-                continue;
-            const donePath = join(stateRoot(cwd, teamName), 'workers', wName, 'done.json');
-            const signal = await readJsonSafe(donePath);
-            if (!signal)
-                continue;
-            // Add to processed FIRST to prevent re-processing
-            processed.add(wName);
-            // Delete done.json so it is not processed again
-            try {
-                const { unlink } = await import('fs/promises');
-                await unlink(donePath);
+        if (tickInFlight)
+            return;
+        tickInFlight = true;
+        try {
+            for (const [wName, active] of [...runtime.activeWorkers.entries()]) {
+                const root = stateRoot(runtime.cwd, runtime.teamName);
+                const donePath = join(root, 'workers', wName, 'done.json');
+                // Process done.json first if present
+                const signal = await readJsonSafe(donePath);
+                if (signal) {
+                    await markTaskFromDone(root, signal.taskId || active.taskId, signal.status, signal.summary);
+                    try {
+                        const { unlink } = await import('fs/promises');
+                        await unlink(donePath);
+                    }
+                    catch {
+                        // no-op
+                    }
+                    await killWorkerPane(runtime, wName, active.paneId);
+                    if (!(await allTasksTerminal(runtime))) {
+                        const nextTaskIndexValue = await nextPendingTaskIndex(runtime);
+                        if (nextTaskIndexValue != null) {
+                            await spawnWorkerForTask(runtime, wName, nextTaskIndexValue);
+                        }
+                    }
+                    continue;
+                }
+                // Dead pane without done.json => fail task, do not requeue
+                const alive = await isWorkerAlive(active.paneId);
+                if (!alive) {
+                    await markTaskFailedDeadPane(root, active.taskId, wName);
+                    await killWorkerPane(runtime, wName, active.paneId);
+                    if (!(await allTasksTerminal(runtime))) {
+                        const nextTaskIndexValue = await nextPendingTaskIndex(runtime);
+                        if (nextTaskIndexValue != null) {
+                            await spawnWorkerForTask(runtime, wName, nextTaskIndexValue);
+                        }
+                    }
+                }
             }
-            catch {
-                // Already deleted or never existed — OK
-            }
-            // Call onComplete wrapped in try/catch to prevent watchdog crash
-            try {
-                await onComplete({
-                    workerName: wName,
-                    taskId: signal.taskId,
-                    status: signal.status,
-                    summary: signal.summary,
-                });
-            }
-            catch (err) {
-                console.warn(`[watchdog] onComplete error for ${wName}:`, err);
-            }
+        }
+        finally {
+            tickInFlight = false;
         }
     };
     const intervalId = setInterval(() => { tick().catch(err => console.warn('[watchdog] tick error:', err)); }, intervalMs);
     return () => clearInterval(intervalId);
+}
+/**
+ * Spawn a worker pane for an explicit task assignment.
+ */
+export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
+    const root = stateRoot(runtime.cwd, runtime.teamName);
+    const taskId = String(taskIndex + 1);
+    const task = runtime.config.tasks[taskIndex];
+    if (!task)
+        return '';
+    const marked = await markTaskInProgress(root, taskId, workerNameValue);
+    if (!marked)
+        return '';
+    const { execFile } = await import('child_process');
+    const { promisify } = await import('util');
+    const execFileAsync = promisify(execFile);
+    const splitTarget = runtime.workerPaneIds.length === 0
+        ? runtime.leaderPaneId
+        : runtime.workerPaneIds[runtime.workerPaneIds.length - 1];
+    const splitType = runtime.workerPaneIds.length === 0 ? '-h' : '-v';
+    const splitResult = await execFileAsync('tmux', [
+        'split-window', splitType, '-t', splitTarget,
+        '-d', '-P', '-F', '#{pane_id}',
+        '-c', runtime.cwd,
+    ]);
+    const paneId = splitResult.stdout.split('\n')[0]?.trim();
+    if (!paneId)
+        return '';
+    const workerIndex = parseWorkerIndex(workerNameValue);
+    const agentType = runtime.config.agentTypes[workerIndex % runtime.config.agentTypes.length]
+        ?? runtime.config.agentTypes[0]
+        ?? 'claude';
+    const envVars = getModelWorkerEnv(runtime.teamName, workerNameValue, agentType);
+    const launchCmd = buildWorkerCommand(agentType, {
+        teamName: runtime.teamName,
+        workerName: workerNameValue,
+        cwd: runtime.cwd,
+    });
+    const paneConfig = {
+        teamName: runtime.teamName,
+        workerName: workerNameValue,
+        envVars,
+        launchCmd,
+        cwd: runtime.cwd,
+    };
+    await spawnWorkerInPane(runtime.sessionName, paneId, paneConfig);
+    runtime.workerPaneIds.push(paneId);
+    runtime.activeWorkers.set(workerNameValue, { paneId, taskId, spawnedAt: Date.now() });
+    try {
+        await execFileAsync('tmux', ['select-layout', '-t', runtime.sessionName, 'main-vertical']);
+    }
+    catch {
+        // layout update is best-effort
+    }
+    try {
+        await writePanesTrackingFileIfPresent(runtime);
+    }
+    catch {
+        // panes tracking is best-effort
+    }
+    // Allow agent CLI startup before sending instruction trigger.
+    await new Promise(r => setTimeout(r, 4000));
+    if (agentType === 'gemini') {
+        await sendToWorker(runtime.sessionName, paneId, '1');
+        await new Promise(r => setTimeout(r, 800));
+    }
+    const instruction = buildInitialTaskInstruction(runtime.teamName, workerNameValue, task, taskId);
+    await composeInitialInbox(runtime.teamName, workerNameValue, instruction, runtime.cwd);
+    const relInboxPath = `.omc/state/team/${runtime.teamName}/workers/${workerNameValue}/inbox.md`;
+    await sendToWorker(runtime.sessionName, paneId, `Read and execute your task from: ${relInboxPath}`);
+    return paneId;
+}
+/**
+ * Kill a single worker pane and update runtime state.
+ */
+export async function killWorkerPane(runtime, workerNameValue, paneId) {
+    try {
+        const { execFile } = await import('child_process');
+        const { promisify } = await import('util');
+        const execFileAsync = promisify(execFile);
+        await execFileAsync('tmux', ['kill-pane', '-t', paneId]);
+    }
+    catch {
+        // idempotent: pane may already be gone
+    }
+    const paneIndex = runtime.workerPaneIds.indexOf(paneId);
+    if (paneIndex >= 0) {
+        runtime.workerPaneIds.splice(paneIndex, 1);
+    }
+    runtime.activeWorkers.delete(workerNameValue);
+    try {
+        await writePanesTrackingFileIfPresent(runtime);
+    }
+    catch {
+        // panes tracking is best-effort
+    }
 }
 /**
  * Assign a task to a specific worker via inbox + tmux trigger.
@@ -350,6 +497,7 @@ export async function resumeTeam(teamName, cwd) {
         config: configData,
         workerNames,
         workerPaneIds,
+        activeWorkers: new Map(),
         cwd,
     };
 }

@@ -36,6 +36,22 @@ interface CliOutput {
   workerCount: number;
 }
 
+async function writePanesFile(
+  jobId: string | undefined,
+  paneIds: string[],
+  leaderPaneId: string
+): Promise<void> {
+  const omcJobsDir = process.env.OMC_JOBS_DIR;
+  if (!jobId || !omcJobsDir) return;
+
+  const panesPath = join(omcJobsDir, `${jobId}-panes.json`);
+  await writeFile(
+    panesPath + '.tmp',
+    JSON.stringify({ paneIds: [...paneIds], leaderPaneId }),
+  );
+  await rename(panesPath + '.tmp', panesPath);
+}
+
 function collectTaskResults(stateRoot: string): TaskResult[] {
   const tasksDir = join(stateRoot, 'tasks');
   try {
@@ -92,7 +108,7 @@ async function main(): Promise<void> {
     agentTypes,
     tasks,
     cwd,
-    timeoutSeconds = 300,
+    timeoutSeconds = 0,
     pollIntervalMs = 5000,
   } = input;
 
@@ -180,24 +196,22 @@ async function main(): Promise<void> {
 
   // Persist pane IDs to disk so MCP server can clean up after timeout (Step 1)
   const jobId = process.env.OMC_JOB_ID;
-  const omcJobsDir = process.env.OMC_JOBS_DIR;
-  if (jobId && omcJobsDir) {
-    try {
-      const panesPath = join(omcJobsDir, `${jobId}-panes.json`);
-      await writeFile(
-        panesPath + '.tmp',
-        JSON.stringify({ paneIds: runtime.workerPaneIds, leaderPaneId: runtime.leaderPaneId }),
-      );
-      await rename(panesPath + '.tmp', panesPath);
-    } catch (err) {
-      process.stderr.write(`[runtime-cli] Failed to persist pane IDs: ${err}\n`);
-    }
+  try {
+    await writePanesFile(jobId, runtime.workerPaneIds, runtime.leaderPaneId);
+  } catch (err) {
+    process.stderr.write(`[runtime-cli] Failed to persist pane IDs: ${err}\n`);
   }
 
   // Poll loop
-  const deadline = Date.now() + timeoutMs;
+  const deadline = timeoutSeconds > 0 ? Date.now() + timeoutMs : Infinity;
 
-  while (pollActive && Date.now() < deadline) {
+  while (pollActive) {
+    if (Date.now() > deadline) {
+      process.stderr.write(`[runtime-cli] Timeout after ${timeoutSeconds}s\n`);
+      await doShutdown('timeout');
+      return;
+    }
+
     await new Promise(r => setTimeout(r, pollIntervalMs));
 
     if (!pollActive) break;
@@ -208,6 +222,12 @@ async function main(): Promise<void> {
     } catch (err) {
       process.stderr.write(`[runtime-cli] monitorTeam error: ${err}\n`);
       continue;
+    }
+
+    try {
+      await writePanesFile(jobId, runtime.workerPaneIds, runtime.leaderPaneId);
+    } catch (err) {
+      process.stderr.write(`[runtime-cli] Failed to persist pane IDs: ${err}\n`);
     }
 
     process.stderr.write(
@@ -221,7 +241,7 @@ async function main(): Promise<void> {
     }
 
     // Check failure heuristics
-    const allWorkersDead = snap.deadWorkers.length === runtime.workerPaneIds.length;
+    const allWorkersDead = runtime.workerPaneIds.length > 0 && snap.deadWorkers.length === runtime.workerPaneIds.length;
     const hasOutstandingWork = (snap.taskCounts.pending + snap.taskCounts.inProgress) > 0;
 
     const deadWorkerFailure = allWorkersDead && hasOutstandingWork;
@@ -234,11 +254,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // Timed out
-  if (pollActive) {
-    process.stderr.write(`[runtime-cli] Timeout after ${timeoutSeconds}s\n`);
-    await doShutdown('timeout');
-  }
 }
 
 if (require.main === module) {

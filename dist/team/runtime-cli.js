@@ -9,6 +9,14 @@ import { readdirSync, readFileSync } from 'fs';
 import { writeFile, rename } from 'fs/promises';
 import { join } from 'path';
 import { startTeam, monitorTeam, shutdownTeam } from './runtime.js';
+async function writePanesFile(jobId, paneIds, leaderPaneId) {
+    const omcJobsDir = process.env.OMC_JOBS_DIR;
+    if (!jobId || !omcJobsDir)
+        return;
+    const panesPath = join(omcJobsDir, `${jobId}-panes.json`);
+    await writeFile(panesPath + '.tmp', JSON.stringify({ paneIds: [...paneIds], leaderPaneId }));
+    await rename(panesPath + '.tmp', panesPath);
+}
 function collectTaskResults(stateRoot) {
     const tasksDir = join(stateRoot, 'tasks');
     try {
@@ -62,7 +70,7 @@ async function main() {
         process.stderr.write(`[runtime-cli] Missing required fields: ${missing.join(', ')}\n`);
         process.exit(1);
     }
-    const { teamName, agentTypes, tasks, cwd, timeoutSeconds = 300, pollIntervalMs = 5000, } = input;
+    const { teamName, agentTypes, tasks, cwd, timeoutSeconds = 0, pollIntervalMs = 5000, } = input;
     const workerCount = input.workerCount ?? agentTypes.length;
     const stateRoot = join(cwd, `.omc/state/team/${teamName}`);
     const timeoutMs = timeoutSeconds * 1000;
@@ -129,20 +137,20 @@ async function main() {
     }
     // Persist pane IDs to disk so MCP server can clean up after timeout (Step 1)
     const jobId = process.env.OMC_JOB_ID;
-    const omcJobsDir = process.env.OMC_JOBS_DIR;
-    if (jobId && omcJobsDir) {
-        try {
-            const panesPath = join(omcJobsDir, `${jobId}-panes.json`);
-            await writeFile(panesPath + '.tmp', JSON.stringify({ paneIds: runtime.workerPaneIds, leaderPaneId: runtime.leaderPaneId }));
-            await rename(panesPath + '.tmp', panesPath);
-        }
-        catch (err) {
-            process.stderr.write(`[runtime-cli] Failed to persist pane IDs: ${err}\n`);
-        }
+    try {
+        await writePanesFile(jobId, runtime.workerPaneIds, runtime.leaderPaneId);
+    }
+    catch (err) {
+        process.stderr.write(`[runtime-cli] Failed to persist pane IDs: ${err}\n`);
     }
     // Poll loop
-    const deadline = Date.now() + timeoutMs;
-    while (pollActive && Date.now() < deadline) {
+    const deadline = timeoutSeconds > 0 ? Date.now() + timeoutMs : Infinity;
+    while (pollActive) {
+        if (Date.now() > deadline) {
+            process.stderr.write(`[runtime-cli] Timeout after ${timeoutSeconds}s\n`);
+            await doShutdown('timeout');
+            return;
+        }
         await new Promise(r => setTimeout(r, pollIntervalMs));
         if (!pollActive)
             break;
@@ -154,6 +162,12 @@ async function main() {
             process.stderr.write(`[runtime-cli] monitorTeam error: ${err}\n`);
             continue;
         }
+        try {
+            await writePanesFile(jobId, runtime.workerPaneIds, runtime.leaderPaneId);
+        }
+        catch (err) {
+            process.stderr.write(`[runtime-cli] Failed to persist pane IDs: ${err}\n`);
+        }
         process.stderr.write(`[runtime-cli] phase=${snap.phase} pending=${snap.taskCounts.pending} inProgress=${snap.taskCounts.inProgress} completed=${snap.taskCounts.completed} failed=${snap.taskCounts.failed} dead=${snap.deadWorkers.length}\n`);
         // Check completion
         if (snap.phase === 'completed') {
@@ -161,7 +175,7 @@ async function main() {
             return;
         }
         // Check failure heuristics
-        const allWorkersDead = snap.deadWorkers.length === runtime.workerPaneIds.length;
+        const allWorkersDead = runtime.workerPaneIds.length > 0 && snap.deadWorkers.length === runtime.workerPaneIds.length;
         const hasOutstandingWork = (snap.taskCounts.pending + snap.taskCounts.inProgress) > 0;
         const deadWorkerFailure = allWorkersDead && hasOutstandingWork;
         const fixingWithNoWorkers = snap.phase === 'fixing' && allWorkersDead;
@@ -170,11 +184,6 @@ async function main() {
             await doShutdown('failed');
             return;
         }
-    }
-    // Timed out
-    if (pollActive) {
-        process.stderr.write(`[runtime-cli] Timeout after ${timeoutSeconds}s\n`);
-        await doShutdown('timeout');
     }
 }
 if (require.main === module) {
