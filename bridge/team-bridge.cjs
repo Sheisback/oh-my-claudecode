@@ -859,10 +859,9 @@ function sleep(ms) {
   return new Promise((resolve5) => setTimeout(resolve5, ms));
 }
 function captureFileSnapshot(cwd) {
-  const { execSync: execSync3 } = require("child_process");
   const files = /* @__PURE__ */ new Set();
   try {
-    const statusOutput = execSync3("git status --porcelain", { cwd, encoding: "utf-8", timeout: 1e4 });
+    const statusOutput = (0, import_child_process2.execSync)("git status --porcelain", { cwd, encoding: "utf-8", timeout: 1e4 });
     for (const line of statusOutput.split("\n")) {
       if (!line.trim()) continue;
       const filePart = line.slice(3);
@@ -870,7 +869,7 @@ function captureFileSnapshot(cwd) {
       const fileName = arrowIdx !== -1 ? filePart.slice(arrowIdx + 4) : filePart;
       files.add(fileName.trim());
     }
-    const untrackedOutput = execSync3("git ls-files --others --exclude-standard", { cwd, encoding: "utf-8", timeout: 1e4 });
+    const untrackedOutput = (0, import_child_process2.execSync)("git ls-files --others --exclude-standard", { cwd, encoding: "utf-8", timeout: 1e4 });
     for (const line of untrackedOutput.split("\n")) {
       if (line.trim()) files.add(line.trim());
     }
@@ -1066,7 +1065,7 @@ function spawnCliProcess(provider, prompt, model, cwd, timeoutMs) {
   let cmd;
   if (provider === "codex") {
     cmd = "codex";
-    args = ["exec", "-m", model || "gpt-5.3-codex", "--json", "--full-auto"];
+    args = ["exec", "-m", model || "gpt-5.3-codex", "--json", "--full-auto", "--skip-git-repo-check"];
   } else {
     cmd = "gemini";
     args = ["--yolo"];

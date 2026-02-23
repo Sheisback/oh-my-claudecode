@@ -84,6 +84,16 @@ describe('MCP Fallback on 429/Rate-Limit Errors', () => {
       const result = isRateLimitError(output);
       expect(result.isError).toBe(false);
     });
+
+    it.each([
+      'stream disconnected',
+      'TRANSPORT CLOSED',
+      'socket error: ECONNRESET',
+      'write failed: epipe',
+    ])('should detect disconnect signature as retryable: %s', (msg) => {
+      const result = isRateLimitError('', msg);
+      expect(result.isError).toBe(true);
+    });
   });
 
   describe('Codex: isRetryableError', () => {
@@ -111,6 +121,17 @@ describe('MCP Fallback on 429/Rate-Limit Errors', () => {
       const result = isRetryableError('', 'Connection timeout');
       expect(result.isError).toBe(false);
       expect(result.type).toBe('none');
+    });
+
+    it.each([
+      'stream disconnected',
+      'TRANSPORT CLOSED',
+      'socket error: ECONNRESET',
+      'write failed: epipe',
+    ])('should classify disconnect signature as rate_limit retryable: %s', (msg) => {
+      const result = isRetryableError('', msg);
+      expect(result.isError).toBe(true);
+      expect(result.type).toBe('rate_limit');
     });
   });
 
@@ -173,6 +194,17 @@ describe('MCP Fallback on 429/Rate-Limit Errors', () => {
       const result = isGeminiRetryableError('model_not_found', '429 Too Many Requests');
       expect(result.isError).toBe(true);
       expect(result.type).toBe('model');
+    });
+
+    it.each([
+      'stream disconnected',
+      'TRANSPORT CLOSED',
+      'socket error: ECONNRESET',
+      'write failed: epipe',
+    ])('should treat disconnect signature as retryable: %s', (msg) => {
+      const result = isGeminiRetryableError('', msg);
+      expect(result.isError).toBe(true);
+      expect(result.type).toBe('rate_limit');
     });
   });
 

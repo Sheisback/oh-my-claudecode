@@ -13,7 +13,7 @@
  */
 
 import { spawn } from 'child_process';
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'fs';
 import { resolve, relative, sep, isAbsolute, join } from 'path';
 import { createStdoutCollector, safeWriteOutputFile } from './shared-exec.js';
 import { detectGeminiCli } from './cli-detection.js';
@@ -59,6 +59,7 @@ export const GEMINI_RECOMMENDED_ROLES = ['designer', 'writer', 'vision'] as cons
 
 export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
 export const MAX_STDOUT_BYTES = 10 * 1024 * 1024; // 10MB stdout cap
+const GEMINI_RATE_LIMIT_OR_DISCONNECT_REGEX = /429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted|stream disconnected|transport closed|econnreset|epipe/i;
 
 /**
  * Check if Gemini output/stderr indicates a rate-limit (429) or quota error
@@ -71,10 +72,10 @@ export function isGeminiRetryableError(stdout: string, stderr: string = ''): { i
     const match = combined.match(/.*(?:model.?not.?found|model is not supported|model.+does not exist|not.+available).*/i);
     return { isError: true, message: match?.[0]?.trim() || 'Model not available', type: 'model' };
   }
-  // Check for 429/rate limit errors
-  if (/429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted/i.test(combined)) {
-    const match = combined.match(/.*(?:429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted).*/i);
-    return { isError: true, message: match?.[0]?.trim() || 'Rate limit error detected', type: 'rate_limit' };
+  // Check for 429/rate limit and transport disconnect signatures
+  if (GEMINI_RATE_LIMIT_OR_DISCONNECT_REGEX.test(combined)) {
+    const match = combined.match(/.*(?:429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted|stream disconnected|transport closed|econnreset|epipe).*/i);
+    return { isError: true, message: match?.[0]?.trim() || 'Retryable rate-limit/transport error detected', type: 'rate_limit' };
   }
   return { isError: false, message: '', type: 'none' };
 }
@@ -219,8 +220,13 @@ export function executeGeminiBackground(
       writeJobStatus(initialStatus, workingDirectory);
 
       const collector = createStdoutCollector(MAX_STDOUT_BYTES);
+      const partialFile = jobMeta.responseFile + '.partial';
       let stderr = '';
       let settled = false;
+
+      const cleanupPartial = () => {
+        try { if (existsSync(partialFile)) unlinkSync(partialFile); } catch { /* ignore */ }
+      };
 
       const timeoutHandle = setTimeout(() => {
         if (!settled) {
@@ -232,6 +238,7 @@ export function executeGeminiBackground(
           } catch {
             // ignore
           }
+          cleanupPartial();
           writeJobStatus({
             ...initialStatus,
             status: 'timeout',
@@ -243,6 +250,7 @@ export function executeGeminiBackground(
 
       child.stdout?.on('data', (data: Buffer) => {
         collector.append(data.toString());
+        try { appendFileSync(partialFile, data); } catch { /* ignore */ }
       });
       child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
 
@@ -250,6 +258,7 @@ export function executeGeminiBackground(
         if (settled) return;
         settled = true;
         clearTimeout(timeoutHandle);
+        cleanupPartial();
         writeJobStatus({
           ...initialStatus,
           status: 'failed',
@@ -266,6 +275,7 @@ export function executeGeminiBackground(
         settled = true;
         clearTimeout(timeoutHandle);
         spawnedPids.delete(pid);
+        cleanupPartial();
         const stdout = collector.toString();
 
         // Check if user killed this job
@@ -352,6 +362,7 @@ export function executeGeminiBackground(
         if (settled) return;
         settled = true;
         clearTimeout(timeoutHandle);
+        cleanupPartial();
         writeJobStatus({
           ...initialStatus,
           status: 'failed',
@@ -645,6 +656,7 @@ ${resolvedPrompt}`;
           `**PID:** ${result.pid}`,
           `**Prompt File:** ${promptResult.filePath}`,
           `**Response File:** ${expectedResponsePath}`,
+          `**Partial Output:** ${expectedResponsePath}.partial  (tail -f to stream live)`,
           `**Status File:** ${statusFilePath}`,
           ``,
           `Job dispatched. Will automatically try fallback models on 429/rate-limit or model errors.`,

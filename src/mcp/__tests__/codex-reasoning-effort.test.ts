@@ -209,4 +209,52 @@ describe('executeCodexWithFallback reasoning effort passthrough', () => {
     expect(result.usedFallback).toBe(true);
     expect(result.actualModel).toBe('gpt-5.2-codex');
   });
+
+  it('explicit model retries same model for disconnect errors (no fallback model switch)', async () => {
+    const mockExecutor = vi.fn()
+      .mockRejectedValueOnce(new Error('Codex rate limit error: stream disconnected'))
+      .mockRejectedValueOnce(new Error('Codex rate limit error: ECONNRESET'))
+      .mockResolvedValueOnce('ok after retry');
+    const mockSleep = vi.fn().mockResolvedValue(undefined);
+
+    const result = await executeCodexWithFallback(
+      'test prompt',
+      'gpt-5.3-codex',
+      undefined,
+      ['gpt-5.3-codex', 'gpt-5.2-codex'],
+      { executor: mockExecutor as any, sleepFn: mockSleep },
+      'medium',
+    );
+
+    expect(mockExecutor).toHaveBeenCalledTimes(3);
+    expect(mockExecutor.mock.calls[0][1]).toBe('gpt-5.3-codex');
+    expect(mockExecutor.mock.calls[1][1]).toBe('gpt-5.3-codex');
+    expect(mockExecutor.mock.calls[2][1]).toBe('gpt-5.3-codex');
+    expect(result.usedFallback).toBe(false);
+    expect(result.actualModel).toBe('gpt-5.3-codex');
+    expect(mockSleep).toHaveBeenCalledTimes(2);
+  });
+
+  it('implicit model advances fallback chain on disconnect errors', async () => {
+    const mockExecutor = vi.fn()
+      .mockRejectedValueOnce(new Error('Codex rate limit error: transport closed'))
+      .mockResolvedValueOnce('fallback response');
+    const mockSleep = vi.fn().mockResolvedValue(undefined);
+
+    const result = await executeCodexWithFallback(
+      'test prompt',
+      undefined,
+      undefined,
+      ['gpt-5.3-codex', 'gpt-5.2-codex'],
+      { executor: mockExecutor as any, sleepFn: mockSleep },
+      'low',
+    );
+
+    expect(mockExecutor).toHaveBeenCalledTimes(2);
+    expect(mockExecutor.mock.calls[0][1]).toBe('gpt-5.3-codex');
+    expect(mockExecutor.mock.calls[1][1]).toBe('gpt-5.2-codex');
+    expect(mockSleep).toHaveBeenCalledTimes(1);
+    expect(result.usedFallback).toBe(true);
+    expect(result.actualModel).toBe('gpt-5.2-codex');
+  });
 });
