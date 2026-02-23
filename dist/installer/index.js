@@ -223,7 +223,6 @@ function getPackageDir() {
         // import.meta.url unavailable — fall through to CJS path
     }
     // CJS bundle path: from bridge/ go up 1 level to package root
-    // eslint-disable-next-line no-undef
     if (typeof __dirname !== 'undefined') {
         return join(__dirname, '..');
     }
@@ -570,7 +569,7 @@ export function install(options = {}) {
                     '  ',
                     '  // 3. npm package (global or local install)',
                     '  try {',
-                    '    await import("oh-my-claude-sisyphus/dist/hud/index.js");',
+                    '    await import("oh-my-claudecode/dist/hud/index.js");',
                     '    return;',
                     '  } catch { /* continue */ }',
                     '  ',

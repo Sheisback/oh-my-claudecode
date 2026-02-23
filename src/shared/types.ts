@@ -1,5 +1,5 @@
 /**
- * Shared types for Oh-My-Claude-Sisyphus
+ * Shared types for Oh-My-ClaudeCode
  */
 
 export type ModelType = 'sonnet' | 'opus' | 'haiku' | 'inherit';
@@ -30,8 +30,8 @@ export interface PluginConfig {
     // New agents from oh-my-opencode
     critic?: { model?: string; enabled?: boolean };
     analyst?: { model?: string; enabled?: boolean };
-    orchestratorSisyphus?: { model?: string; enabled?: boolean };
-    sisyphusJunior?: { model?: string; enabled?: boolean };
+    coordinator?: { model?: string; enabled?: boolean };
+    executor?: { model?: string; enabled?: boolean };
     planner?: { model?: string; enabled?: boolean };
   };
 
@@ -98,6 +98,16 @@ export interface PluginConfig {
 
   // Delegation routing configuration
   delegationRouting?: DelegationRoutingConfig;
+
+  // Startup codebase map injection (issue #804)
+  startupCodebaseMap?: {
+    /** Enable codebase map injection on session start. Default: true */
+    enabled?: boolean;
+    /** Maximum files to include in the map. Default: 200 */
+    maxFiles?: number;
+    /** Maximum directory depth to scan. Default: 4 */
+    maxDepth?: number;
+  };
 
   // Task size detection configuration (issue #790)
   taskSizeDetection?: {

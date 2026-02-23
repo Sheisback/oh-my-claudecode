@@ -227,7 +227,6 @@ async function processKeywordDetector(input) {
             case "team":
             case "pipeline":
             case "ralplan":
-            case "plan":
             case "tdd":
                 messages.push(`[MODE: ${keywordType.toUpperCase()}] Skill invocation handled by UserPromptSubmit hook.`);
                 break;
@@ -326,7 +325,7 @@ async function processPersistentMode(input) {
     const sessionId = input.sessionId;
     const directory = resolveToWorktreeRoot(input.directory);
     // Lazy-load persistent-mode and todo-continuation modules
-    const { checkPersistentModes, createHookOutput } = await import("./persistent-mode/index.js");
+    const { checkPersistentModes, createHookOutput, shouldSendIdleNotification, recordIdleNotificationSent } = await import("./persistent-mode/index.js");
     // Extract stop context for abort detection (supports both camelCase and snake_case)
     const stopContext = {
         stop_reason: input.stop_reason,
@@ -344,11 +343,17 @@ async function processPersistentMode(input) {
             const isAbort = stopContext.user_requested === true || stopContext.userRequested === true;
             const isContextLimit = stopContext.stop_reason === "context_limit" || stopContext.stopReason === "context_limit";
             if (!isAbort && !isContextLimit) {
-                import("../notifications/index.js").then(({ notify }) => notify("session-idle", {
-                    sessionId,
-                    projectPath: directory,
-                    profileName: process.env.OMC_NOTIFY_PROFILE,
-                }).catch(() => { })).catch(() => { });
+                // Per-session cooldown: prevent notification spam when the session idles repeatedly.
+                // Mirrors the cooldown logic in scripts/persistent-mode.cjs (closes #842).
+                const stateDir = join(directory, ".omc", "state");
+                if (shouldSendIdleNotification(stateDir)) {
+                    recordIdleNotificationSent(stateDir);
+                    import("../notifications/index.js").then(({ notify }) => notify("session-idle", {
+                        sessionId,
+                        projectPath: directory,
+                        profileName: process.env.OMC_NOTIFY_PROFILE,
+                    }).catch(() => { })).catch(() => { });
+                }
             }
             // IMPORTANT: Do NOT clean up reply-listener/session-registry on Stop hooks.
             // Stop can fire for normal "idle" turns while the session is still active.
@@ -391,6 +396,7 @@ async function processSessionStart(input) {
     const { readAutopilotState } = await import("./autopilot/index.js");
     const { readUltraworkState } = await import("./ultrawork/index.js");
     const { checkIncompleteTodos } = await import("./todo-continuation/index.js");
+    const { buildAgentsOverlay } = await import("./agents-overlay.js");
     // Trigger silent auto-update check (non-blocking, checks config internally)
     initSilentAutoUpdate();
     // Send session-start notification (non-blocking, swallows errors)
@@ -419,6 +425,16 @@ async function processSessionStart(input) {
         }).catch(() => { });
     }
     const messages = [];
+    // Inject startup codebase map (issue #804) — first context item so agents orient quickly
+    try {
+        const overlayResult = buildAgentsOverlay(directory);
+        if (overlayResult.message) {
+            messages.push(overlayResult.message);
+        }
+    }
+    catch {
+        // Non-blocking: codebase map failure must never break session start
+    }
     // Check for active autopilot state - only restore if it belongs to this session
     const autopilotState = readAutopilotState(directory);
     if (autopilotState?.active && autopilotState.session_id === sessionId) {

@@ -19,7 +19,7 @@ import { join } from "path";
 import { resolveToWorktreeRoot } from "../lib/worktree-paths.js";
 
 // Hot-path imports: needed on every/most hook invocations (keyword-detector, pre/post-tool-use)
-import { removeCodeBlocks, getAllKeywords, getAllKeywordsWithSizeCheck } from "./keyword-detector/index.js";
+import { removeCodeBlocks, getAllKeywordsWithSizeCheck } from "./keyword-detector/index.js";
 import { processOrchestratorPreTool, processOrchestratorPostTool } from "./omc-orchestrator/index.js";
 import { normalizeHookInput } from "./bridge-normalize.js";
 import {
@@ -32,7 +32,6 @@ import {
   ULTRATHINK_MESSAGE,
   SEARCH_MESSAGE,
   ANALYZE_MESSAGE,
-  TODO_CONTINUATION_PROMPT,
   RALPH_MESSAGE,
 } from "../installer/hooks.js";
 // Agent dashboard is used in pre/post-tool-use hot path
@@ -373,7 +372,6 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
       case "team":
       case "pipeline":
       case "ralplan":
-      case "plan":
       case "tdd":
         messages.push(
           `[MODE: ${keywordType.toUpperCase()}] Skill invocation handled by UserPromptSubmit hook.`,
@@ -500,7 +498,7 @@ async function processPersistentMode(input: HookInput): Promise<HookOutput> {
   const directory = resolveToWorktreeRoot(input.directory);
 
   // Lazy-load persistent-mode and todo-continuation modules
-  const { checkPersistentModes, createHookOutput } = await import("./persistent-mode/index.js");
+  const { checkPersistentModes, createHookOutput, shouldSendIdleNotification, recordIdleNotificationSent } = await import("./persistent-mode/index.js");
 
   // Extract stop context for abort detection (supports both camelCase and snake_case)
   const stopContext: StopContext = {
@@ -529,13 +527,19 @@ async function processPersistentMode(input: HookInput): Promise<HookOutput> {
       const isAbort = stopContext.user_requested === true || stopContext.userRequested === true;
       const isContextLimit = stopContext.stop_reason === "context_limit" || stopContext.stopReason === "context_limit";
       if (!isAbort && !isContextLimit) {
-        import("../notifications/index.js").then(({ notify }) =>
-          notify("session-idle", {
-            sessionId,
-            projectPath: directory,
-            profileName: process.env.OMC_NOTIFY_PROFILE,
-          }).catch(() => {})
-        ).catch(() => {});
+        // Per-session cooldown: prevent notification spam when the session idles repeatedly.
+        // Mirrors the cooldown logic in scripts/persistent-mode.cjs (closes #842).
+        const stateDir = join(directory, ".omc", "state");
+        if (shouldSendIdleNotification(stateDir)) {
+          recordIdleNotificationSent(stateDir);
+          import("../notifications/index.js").then(({ notify }) =>
+            notify("session-idle", {
+              sessionId,
+              projectPath: directory,
+              profileName: process.env.OMC_NOTIFY_PROFILE,
+            }).catch(() => {})
+          ).catch(() => {});
+        }
       }
 
       // IMPORTANT: Do NOT clean up reply-listener/session-registry on Stop hooks.
@@ -583,6 +587,7 @@ async function processSessionStart(input: HookInput): Promise<HookOutput> {
   const { readAutopilotState } = await import("./autopilot/index.js");
   const { readUltraworkState } = await import("./ultrawork/index.js");
   const { checkIncompleteTodos } = await import("./todo-continuation/index.js");
+  const { buildAgentsOverlay } = await import("./agents-overlay.js");
 
   // Trigger silent auto-update check (non-blocking, checks config internally)
   initSilentAutoUpdate();
@@ -620,6 +625,16 @@ async function processSessionStart(input: HookInput): Promise<HookOutput> {
   }
 
   const messages: string[] = [];
+
+  // Inject startup codebase map (issue #804) — first context item so agents orient quickly
+  try {
+    const overlayResult = buildAgentsOverlay(directory);
+    if (overlayResult.message) {
+      messages.push(overlayResult.message);
+    }
+  } catch {
+    // Non-blocking: codebase map failure must never break session start
+  }
 
   // Check for active autopilot state - only restore if it belongs to this session
   const autopilotState = readAutopilotState(directory);
@@ -1132,7 +1147,19 @@ export async function processHook(
           return { continue: true };
         }
         const { handleSessionEnd } = await import("./session-end/index.js");
-        return await handleSessionEnd(input as SessionEndInput);
+        // De-normalize: SessionEndInput expects snake_case fields (session_id, cwd).
+        // normalizeHookInput mapped session_id→sessionId and cwd→directory, so we
+        // must reconstruct the snake_case shape before calling the handler.
+        const rawSE = input as unknown as Record<string, unknown>;
+        const sessionEndInput: SessionEndInput = {
+          session_id: (rawSE.sessionId ?? rawSE.session_id) as string,
+          cwd: (rawSE.directory ?? rawSE.cwd) as string,
+          transcript_path: rawSE.transcript_path as string,
+          permission_mode: (rawSE.permission_mode ?? "default") as string,
+          hook_event_name: "SessionEnd",
+          reason: (rawSE.reason as SessionEndInput["reason"]) ?? "other",
+        };
+        return await handleSessionEnd(sessionEndInput);
       }
 
       case "subagent-start": {
@@ -1193,7 +1220,18 @@ export async function processHook(
           return { continue: true };
         }
         const { processPreCompact } = await import("./pre-compact/index.js");
-        return await processPreCompact(input as PreCompactInput);
+        // De-normalize: PreCompactInput expects snake_case fields (session_id, cwd).
+        const rawPC = input as unknown as Record<string, unknown>;
+        const preCompactInput: PreCompactInput = {
+          session_id: (rawPC.sessionId ?? rawPC.session_id) as string,
+          cwd: (rawPC.directory ?? rawPC.cwd) as string,
+          transcript_path: rawPC.transcript_path as string,
+          permission_mode: (rawPC.permission_mode ?? "default") as string,
+          hook_event_name: "PreCompact",
+          trigger: (rawPC.trigger as "manual" | "auto") ?? "auto",
+          custom_instructions: rawPC.custom_instructions as string | undefined,
+        };
+        return await processPreCompact(preCompactInput);
       }
 
       case "setup-init":
@@ -1202,11 +1240,17 @@ export async function processHook(
           return { continue: true };
         }
         const { processSetup } = await import("./setup/index.js");
-        return await processSetup({
-          ...(input as SetupInput),
-          trigger: hookType === "setup-init" ? "init" : "maintenance",
+        // De-normalize: SetupInput expects snake_case fields (session_id, cwd).
+        const rawSetup = input as unknown as Record<string, unknown>;
+        const setupInput: SetupInput = {
+          session_id: (rawSetup.sessionId ?? rawSetup.session_id) as string,
+          cwd: (rawSetup.directory ?? rawSetup.cwd) as string,
+          transcript_path: rawSetup.transcript_path as string,
+          permission_mode: (rawSetup.permission_mode ?? "default") as string,
           hook_event_name: "Setup",
-        });
+          trigger: hookType === "setup-init" ? "init" : "maintenance",
+        };
+        return await processSetup(setupInput);
       }
 
       case "permission-request": {
@@ -1216,7 +1260,20 @@ export async function processHook(
           return { continue: true };
         }
         const { handlePermissionRequest } = await import("./permission-handler/index.js");
-        return await handlePermissionRequest(input as PermissionRequestInput);
+        // De-normalize: PermissionRequestInput expects snake_case fields
+        // (session_id, cwd, tool_name, tool_input).
+        const rawPR = input as unknown as Record<string, unknown>;
+        const permissionInput: PermissionRequestInput = {
+          session_id: (rawPR.sessionId ?? rawPR.session_id) as string,
+          cwd: (rawPR.directory ?? rawPR.cwd) as string,
+          tool_name: (rawPR.toolName ?? rawPR.tool_name) as string,
+          tool_input: (rawPR.toolInput ?? rawPR.tool_input) as PermissionRequestInput["tool_input"],
+          transcript_path: rawPR.transcript_path as string,
+          permission_mode: (rawPR.permission_mode ?? "default") as string,
+          hook_event_name: "PermissionRequest",
+          tool_use_id: rawPR.tool_use_id as string,
+        };
+        return await handlePermissionRequest(permissionInput);
       }
 
       case "code-simplifier": {

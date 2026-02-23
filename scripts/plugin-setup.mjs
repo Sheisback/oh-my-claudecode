@@ -81,8 +81,8 @@ async function main() {
 
   // 2. Development paths
   const devPaths = [
-    join(home, "Workspace/oh-my-claude-sisyphus/dist/hud/index.js"),
-    join(home, "workspace/oh-my-claude-sisyphus/dist/hud/index.js"),
+    join(home, "Workspace/oh-my-claudecode/dist/hud/index.js"),
+    join(home, "workspace/oh-my-claudecode/dist/hud/index.js"),
     join(home, "Workspace/oh-my-claudecode/dist/hud/index.js"),
     join(home, "workspace/oh-my-claudecode/dist/hud/index.js"),
   ];
@@ -116,13 +116,31 @@ try {
     settings = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'));
   }
 
-  // Update statusLine to use new HUD path
+  // Use the absolute node binary path so nvm/fnm users don't get
+  // "node not found" errors in non-interactive shells (issue #892).
+  const nodeBin = process.execPath || 'node';
   settings.statusLine = {
     type: 'command',
-    command: `node ${hudScriptPath.replace(/\\/g, "/")}`
+    command: `${nodeBin} ${hudScriptPath.replace(/\\/g, "/")}`
   };
   writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
   console.log('[OMC] Configured HUD statusLine in settings.json');
+
+  // Persist the node binary path to .omc-config.json for use by find-node.sh
+  try {
+    const configPath = join(CLAUDE_DIR, '.omc-config.json');
+    let omcConfig = {};
+    if (existsSync(configPath)) {
+      omcConfig = JSON.parse(readFileSync(configPath, 'utf-8'));
+    }
+    if (nodeBin !== 'node') {
+      omcConfig.nodeBinary = nodeBin;
+      writeFileSync(configPath, JSON.stringify(omcConfig, null, 2));
+      console.log(`[OMC] Saved node binary path: ${nodeBin}`);
+    }
+  } catch (e) {
+    console.log('[OMC] Warning: Could not save node binary path (non-fatal):', e.message);
+  }
 } catch (e) {
   console.log('[OMC] Warning: Could not configure settings.json:', e.message);
 }

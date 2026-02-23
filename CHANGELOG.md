@@ -1,3 +1,85 @@
+# oh-my-claudecode v4.3.4: MCP Reliability & Hook Hardening
+
+This release is a concentrated bug-fix batch targeting MCP bridge stability, hook field normalization, security hardening, and cross-platform compatibility. No breaking changes.
+
+---
+
+### Fixed
+
+**MCP / Codex / Gemini**
+- **Codex trust bypass hardening + disconnect retries**: `fix(mcp)` — bridge now retries on disconnect and tightens trust-bypass checks (#895).
+- **`--skip-git-repo-check` added to all Codex CLI invocations** (#888): Codex no longer fails when invoked outside a git repo.
+- **SUBAGENT_HEADER anti-recursion guard** (#828): Prevents Codex/Gemini from spawning further Codex/Gemini subagents.
+- **`context_files` path validation** (#840): Validates paths to prevent path traversal and prompt injection attacks.
+- **File paths passed instead of file contents** (#837): MCP tools now pass file paths to Codex/Gemini rather than inlining content, reducing token bloat.
+- **ToolSearch discovery hardened** (#816): 3-step sequence prevents false negatives when MCP tools are deferred.
+
+**Hooks**
+- **nvm/fnm node binary resolution** (#892): Hook scripts now resolve the correct `node` binary for nvm/fnm users instead of falling back to system node.
+- **snake_case re-normalization for 4 hook handlers** (#858): `camelCase` fields from Claude Code are correctly de-normalized back to `snake_case` before being forwarded.
+- **`OMC_SKIP_HOOKS` guard added to standalone hook scripts** (#839): Standalone `.cjs` scripts now respect the kill-switch env var.
+- **Unknown-field debug log redirected to stderr** (#871): Hook bridge no longer pollutes stdout with debug messages.
+
+**Session & CLI**
+- **`cwd` normalized to git worktree root in session-end hook** (#891): `.omc/` path resolution now correctly anchors to the worktree root instead of the raw `cwd`.
+- **tmux mouse mode enabled** (#890): Scroll now works in tmux panes instead of accidentally navigating shell history.
+- **Claude non-zero exit codes propagated** (#870): `cli-launch` no longer swallows non-zero exit codes from Claude.
+- **HUD pane enabled on launch** (#863): `omc hud` command is registered at startup so the HUD pane renders correctly.
+- **`pre-compact` job DB queries now receive `cwd`** (#862): `getActiveJobsSummary` was running queries without the working directory, returning empty results.
+
+**Team**
+- **Auto-cleanup guard for empty task list** (#841): Team auto-cleanup no longer panics when all tasks complete simultaneously.
+- **Auto-cleanup workers on task completion** (#835): Workers are now shut down automatically when all tasks reach terminal states.
+- **`require()` → ESM `import` in `captureFileSnapshot`** (#875): Fixes module-type mismatch in team file snapshot utility.
+
+**Live-data**
+- **HTML-escape command/output in tag attributes** (#854): Prevents XSS-class injection in live-data rendered output.
+- **Skip directives inside unterminated fenced code blocks** (#853): Live-data parser no longer evaluates directives embedded in code fences.
+- **`allowed_patterns` enforced independently of `allowed_commands`** (#855): Pattern allowlist was being skipped when `allowed_commands` was also set.
+
+**Notifications**
+- **Duplicate `messageId` — most recent entry returned** (#877): `lookupByMessageId` now resolves to the latest entry instead of the first.
+- **Per-session idle cooldown wired into TypeScript path** (#842): Idle cooldown was only applied in the CJS path; now enforced end-to-end.
+- **Notification tests made hermetic** (#876): Session-registry tests use a temp dir to avoid cross-test pollution.
+
+**Security**
+- **Shell injection fix in `createWorktree`** (#851): `execSync` replaced with `execFileSync` to prevent shell injection via branch names.
+
+**Models**
+- **`opus` alias resolves to `claude-opus-4-6`** (#681 / #817): The `opus` shorthand now correctly maps to the current Opus 4.6 model ID.
+
+**Ralplan**
+- **Mandatory `AskUserQuestion` removed from consensus mode** (#821): Ralplan no longer blocks on a user question in non-interactive runs; use `--interactive` flag to restore the prompt + team-approval option.
+
+**Plugin**
+- **`validateCommitMessage` uses `config.types`** (#865): Commit message validator was ignoring the configured type list.
+- **`isValidFilePath` accepts Windows paths** (#865): Path validator now handles backslash-separated Windows file paths.
+- **`runPreCommitChecks` runs tests and lint** (#865): Pre-commit validation now actually invokes tests and linting.
+- **Cache purge path comparison hardened + race condition guard** (#811): Stale plugin cache pruning now handles symlinks and concurrent runs safely.
+
+**Misc**
+- **`compact` added to native CC command denylist** (#830): `/compact` is now blocked from being treated as a skill invocation.
+- **Agents overlay duplicate truncation note removed** (#844): Cleaned up redundant text in the agents context overlay.
+
+---
+
+### Added
+
+- **Startup codebase map injection hook** (#804 / #818): A new startup hook injects a lightweight codebase map into the session context for faster orientation.
+- **`parseTmuxTail` for clean tmux output in notifications** (#819): Notification payloads now strip tmux control sequences before sending to Discord/Telegram.
+- **Interop tooling gated by mode** (#829): Direct-write bridge and interop tools are only active when an appropriate execution mode is enabled.
+- **Stale plugin cache pruning on update** (#811): Old plugin cache versions are automatically removed when the plugin updates.
+
+---
+
+### Changed
+
+- **Default Gemini model → `gemini-3.1-pro-preview`** (#813): MCP Gemini provider now targets the latest model by default.
+- **Lint: 180 production warnings resolved to zero** (#874): Full production lint pass with no suppressions.
+- **Remaining `sisyphus` / `OmO` references removed** (#823): Repository-wide rename completes the branding cleanup.
+
+---
+
 # oh-my-claudecode v4.3.1: Agent Registry Consolidation
 
 This release completes the Phase 3 agent catalog cleanup. The registry shrinks from **30 → 21 canonical agents**. All removed agents are replaced by deprecation-aware aliases that auto-route to their canonical successors — **no user action required** for most users.

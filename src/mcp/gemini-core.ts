@@ -13,13 +13,13 @@
  */
 
 import { spawn } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'fs';
-import { dirname, resolve, relative, sep, isAbsolute, basename, join } from 'path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'fs';
+import { resolve, relative, sep, isAbsolute, join } from 'path';
 import { createStdoutCollector, safeWriteOutputFile } from './shared-exec.js';
 import { detectGeminiCli } from './cli-detection.js';
 import { getWorktreeRoot } from '../lib/worktree-paths.js';
 import { isExternalPromptAllowed } from './mcp-config.js';
-import { resolveSystemPrompt, buildPromptWithSystemContext, wrapUntrustedFileContent, wrapUntrustedCliResponse, isValidAgentRoleName, VALID_AGENT_ROLES, singleErrorBlock, inlineSuccessBlocks } from './prompt-injection.js';
+import { resolveSystemPrompt, buildPromptWithSystemContext, wrapUntrustedCliResponse, isValidAgentRoleName, VALID_AGENT_ROLES, singleErrorBlock, inlineSuccessBlocks, validateContextFilePaths } from './prompt-injection.js';
 import { persistPrompt, persistResponse, getExpectedResponsePath, getPromptsDir, generatePromptId, slugify } from './prompt-persistence.js';
 import { writeJobStatus, getStatusFilePath, readJobStatus } from './prompt-persistence.js';
 import type { JobStatus, BackgroundJobMeta } from './prompt-persistence.js';
@@ -51,7 +51,7 @@ function validateModelName(model: string): void {
 }
 
 // Default model can be overridden via environment variable
-export const GEMINI_DEFAULT_MODEL = process.env.OMC_GEMINI_DEFAULT_MODEL || 'gemini-3-pro-preview';
+export const GEMINI_DEFAULT_MODEL = process.env.OMC_GEMINI_DEFAULT_MODEL || 'gemini-3.1-pro-preview';
 export const GEMINI_TIMEOUT = Math.min(Math.max(5000, parseInt(process.env.OMC_GEMINI_TIMEOUT || '3600000', 10) || 3600000), 3600000);
 
 // Gemini is best for design review and implementation tasks (recommended, not enforced)
@@ -59,6 +59,7 @@ export const GEMINI_RECOMMENDED_ROLES = ['designer', 'writer', 'vision'] as cons
 
 export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
 export const MAX_STDOUT_BYTES = 10 * 1024 * 1024; // 10MB stdout cap
+const GEMINI_RATE_LIMIT_OR_DISCONNECT_REGEX = /429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted|stream disconnected|transport closed|econnreset|epipe/i;
 
 /**
  * Check if Gemini output/stderr indicates a rate-limit (429) or quota error
@@ -71,10 +72,10 @@ export function isGeminiRetryableError(stdout: string, stderr: string = ''): { i
     const match = combined.match(/.*(?:model.?not.?found|model is not supported|model.+does not exist|not.+available).*/i);
     return { isError: true, message: match?.[0]?.trim() || 'Model not available', type: 'model' };
   }
-  // Check for 429/rate limit errors
-  if (/429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted/i.test(combined)) {
-    const match = combined.match(/.*(?:429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted).*/i);
-    return { isError: true, message: match?.[0]?.trim() || 'Rate limit error detected', type: 'rate_limit' };
+  // Check for 429/rate limit and transport disconnect signatures
+  if (GEMINI_RATE_LIMIT_OR_DISCONNECT_REGEX.test(combined)) {
+    const match = combined.match(/.*(?:429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted|stream disconnected|transport closed|econnreset|epipe).*/i);
+    return { isError: true, message: match?.[0]?.trim() || 'Retryable rate-limit/transport error detected', type: 'rate_limit' };
   }
   return { isError: false, message: '', type: 'none' };
 }
@@ -219,8 +220,13 @@ export function executeGeminiBackground(
       writeJobStatus(initialStatus, workingDirectory);
 
       const collector = createStdoutCollector(MAX_STDOUT_BYTES);
+      const partialFile = jobMeta.responseFile + '.partial';
       let stderr = '';
       let settled = false;
+
+      const cleanupPartial = () => {
+        try { if (existsSync(partialFile)) unlinkSync(partialFile); } catch { /* ignore */ }
+      };
 
       const timeoutHandle = setTimeout(() => {
         if (!settled) {
@@ -232,6 +238,7 @@ export function executeGeminiBackground(
           } catch {
             // ignore
           }
+          cleanupPartial();
           writeJobStatus({
             ...initialStatus,
             status: 'timeout',
@@ -243,6 +250,7 @@ export function executeGeminiBackground(
 
       child.stdout?.on('data', (data: Buffer) => {
         collector.append(data.toString());
+        try { appendFileSync(partialFile, data); } catch { /* ignore */ }
       });
       child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
 
@@ -250,6 +258,7 @@ export function executeGeminiBackground(
         if (settled) return;
         settled = true;
         clearTimeout(timeoutHandle);
+        cleanupPartial();
         writeJobStatus({
           ...initialStatus,
           status: 'failed',
@@ -266,6 +275,7 @@ export function executeGeminiBackground(
         settled = true;
         clearTimeout(timeoutHandle);
         spawnedPids.delete(pid);
+        cleanupPartial();
         const stdout = collector.toString();
 
         // Check if user killed this job
@@ -352,6 +362,7 @@ export function executeGeminiBackground(
         if (settled) return;
         settled = true;
         clearTimeout(timeoutHandle);
+        cleanupPartial();
         writeJobStatus({
           ...initialStatus,
           status: 'failed',
@@ -370,44 +381,6 @@ export function executeGeminiBackground(
   }
 }
 
-/**
- * Validate and read a file for context inclusion
- */
-export function validateAndReadFile(filePath: string, baseDir?: string): string {
-  if (typeof filePath !== 'string') {
-    return `--- File: ${filePath} --- (Invalid path type)`;
-  }
-  try {
-    const resolvedAbs = resolve(baseDir || process.cwd(), filePath);
-
-    // Security: ensure file is within working directory (worktree boundary)
-    const cwd = baseDir || process.cwd();
-    const cwdReal = realpathSync(cwd);
-
-    const relAbs = relative(cwdReal, resolvedAbs);
-    if (relAbs === '..' || relAbs.startsWith('..' + sep) || isAbsolute(relAbs)) {
-      return `[BLOCKED] File '${filePath}' is outside the working directory. Only files within the project are allowed.`;
-    }
-
-    // Symlink-safe check: ensure the real path also stays inside the boundary.
-    const resolvedReal = realpathSync(resolvedAbs);
-    const relReal = relative(cwdReal, resolvedReal);
-    if (relReal === '..' || relReal.startsWith('..' + sep) || isAbsolute(relReal)) {
-      return `[BLOCKED] File '${filePath}' is outside the working directory. Only files within the project are allowed.`;
-    }
-
-    const stats = statSync(resolvedReal);
-    if (!stats.isFile()) {
-      return `--- File: ${filePath} --- (Not a regular file)`;
-    }
-    if (stats.size > MAX_FILE_SIZE) {
-      return `--- File: ${filePath} --- (File too large: ${(stats.size / 1024 / 1024).toFixed(1)}MB, max 5MB)`;
-    }
-    return wrapUntrustedFileContent(filePath, readFileSync(resolvedReal, 'utf-8'));
-  } catch {
-    return `--- File: ${filePath} --- (Error reading file)`;
-  }
-}
 
 /**
  * Handle ask_gemini tool request - contains ALL business logic
@@ -615,10 +588,16 @@ ${resolvedPrompt}`;
   // Resolve system prompt from agent role
   const resolvedSystemPrompt = resolveSystemPrompt(undefined, agent_role, 'gemini');
 
-  // Build file context
+  // Build file context — validate paths first to prevent path traversal and prompt injection
   let fileContext: string | undefined;
   if (files && files.length > 0) {
-    fileContext = files.map(f => validateAndReadFile(f, baseDir)).join('\n\n');
+    const { validPaths, errors } = validateContextFilePaths(files, baseDirReal, isExternalPromptAllowed());
+    if (errors.length > 0) {
+      console.warn('[gemini-core] files validation rejected paths:', errors.join('; '));
+    }
+    if (validPaths.length > 0) {
+      fileContext = `The following files are available for reference. Use your file tools to read them as needed:\n${validPaths.map(f => `- ${f}`).join('\n')}`;
+    }
   }
 
   // Combine: system prompt > file context > user prompt
@@ -677,6 +656,7 @@ ${resolvedPrompt}`;
           `**PID:** ${result.pid}`,
           `**Prompt File:** ${promptResult.filePath}`,
           `**Response File:** ${expectedResponsePath}`,
+          `**Partial Output:** ${expectedResponsePath}.partial  (tail -f to stream live)`,
           `**Status File:** ${statusFilePath}`,
           ``,
           `Job dispatched. Will automatically try fallback models on 429/rate-limit or model errors.`,

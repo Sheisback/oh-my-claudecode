@@ -25,8 +25,7 @@ export type KeywordType =
 | 'swarm'       // Priority 6
   | 'pipeline'    // Priority 7
   | 'ralplan'     // Priority 8
-  | 'plan'        // Priority 9
-  | 'tdd'         // Priority 10
+  | 'tdd'         // Priority 9
   | 'ultrathink'  // Priority 11
   | 'deepsearch'  // Priority 12
   | 'analyze'     // Priority 13
@@ -54,8 +53,7 @@ const KEYWORD_PATTERNS: Record<KeywordType, RegExp> = {
   team: /(?<!\b(?:my|the|our|a|his|her|their|its)\s)\bteam\b|\bcoordinated\s+team\b/i,
   pipeline: /\bagent\s+pipeline\b|\bchain\s+agents\b/i,
   ralplan: /\b(ralplan)\b/i,
-  plan: /\bplan\s+(this|the)\b/i,
-tdd: /\b(tdd)\b|\btest\s+first\b/i,
+  tdd: /\b(tdd)\b|\btest\s+first\b/i,
   ultrathink: /\b(ultrathink)\b/i,
   deepsearch: /\b(deepsearch)\b|\bsearch\s+the\s+codebase\b|\bfind\s+in\s+(the\s+)?codebase\b/i,
   analyze: /\b(deep[\s-]?analyze|deepanalyze)\b/i,
@@ -69,7 +67,7 @@ tdd: /\b(tdd)\b|\btest\s+first\b/i,
  */
 const KEYWORD_PRIORITY: KeywordType[] = [
   'cancel', 'ralph', 'autopilot', 'ultrapilot', 'team', 'ultrawork',
-  'swarm', 'pipeline', 'ccg', 'ralplan', 'plan', 'tdd',
+  'swarm', 'pipeline', 'ccg', 'ralplan', 'tdd',
   'ultrathink', 'deepsearch', 'analyze', 'codex', 'gemini'
 ];
 

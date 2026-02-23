@@ -68,7 +68,7 @@ function resolveExplicitTool(
     case 'ask_gemini':
       provider = 'gemini';
       // Keep default consistent with Gemini core + external-model policy
-      agentOrModel = model || 'gemini-3-pro-preview';
+      agentOrModel = model || 'gemini-3.1-pro-preview';
       break;
     case 'Task':
     default:
@@ -154,7 +154,7 @@ function resolveDefault(
     return {
       provider: 'gemini',
       tool: 'ask_gemini',
-      agentOrModel: 'gemini-3-pro-preview',
+      agentOrModel: 'gemini-3.1-pro-preview',
       reason: `Fallback to default provider: ${defaultProvider}`,
     };
   }

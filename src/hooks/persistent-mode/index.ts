@@ -10,8 +10,9 @@
  * Priority order: Ralph > Ultrawork > Todo Continuation
  */
 
-import { existsSync, readFileSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
+import { join, dirname } from 'path';
+import { homedir } from 'os';
 import { getClaudeConfigDir } from '../../utils/paths.js';
 import {
   readUltraworkState,
@@ -190,6 +191,62 @@ function trackTodoContinuationAttempt(sessionId: string): number {
  */
 export function resetTodoContinuationAttempts(sessionId: string): void {
   todoContinuationAttempts.delete(sessionId);
+}
+
+/**
+ * Read the session-idle notification cooldown in seconds from ~/.omc/config.json.
+ * Default: 60 seconds. 0 = disabled (no cooldown).
+ */
+export function getIdleNotificationCooldownSeconds(): number {
+  const configPath = join(homedir(), '.omc', 'config.json');
+  try {
+    if (!existsSync(configPath)) return 60;
+    const config = JSON.parse(readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
+    const cooldown = (config?.notificationCooldown as Record<string, unknown> | undefined);
+    const val = cooldown?.sessionIdleSeconds;
+    if (typeof val === 'number') return val;
+  } catch {
+    // ignore parse errors
+  }
+  return 60;
+}
+
+/**
+ * Check whether the session-idle notification cooldown has elapsed.
+ * Returns true if the notification should be sent.
+ */
+export function shouldSendIdleNotification(stateDir: string): boolean {
+  const cooldownSecs = getIdleNotificationCooldownSeconds();
+  if (cooldownSecs === 0) return true; // cooldown disabled
+
+  const cooldownPath = join(stateDir, 'idle-notif-cooldown.json');
+  try {
+    if (!existsSync(cooldownPath)) return true;
+    const data = JSON.parse(readFileSync(cooldownPath, 'utf-8')) as Record<string, unknown>;
+    if (data?.lastSentAt && typeof data.lastSentAt === 'string') {
+      const elapsed = (Date.now() - new Date(data.lastSentAt).getTime()) / 1000;
+      if (Number.isFinite(elapsed) && elapsed < cooldownSecs) return false;
+    }
+  } catch {
+    // ignore — treat as no cooldown file
+  }
+  return true;
+}
+
+/**
+ * Record that the session-idle notification was sent at the current timestamp.
+ */
+export function recordIdleNotificationSent(stateDir: string): void {
+  const cooldownPath = join(stateDir, 'idle-notif-cooldown.json');
+  try {
+    const dir = dirname(cooldownPath);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    writeFileSync(cooldownPath, JSON.stringify({ lastSentAt: new Date().toISOString() }, null, 2));
+  } catch {
+    // ignore write errors
+  }
 }
 
 /**
@@ -418,7 +475,7 @@ async function checkRalphLoop(
     ? `2. Check prd.json - are ALL stories marked passes: true?`
     : `2. Check your todo list - are ALL items marked complete?`;
 
-  let continuationPrompt = `<ralph-continuation>
+  const continuationPrompt = `<ralph-continuation>
 ${errorGuidance ? errorGuidance + '\n' : ''}
 [RALPH - ITERATION ${newState.iteration}/${newState.max_iterations}]
 
@@ -457,7 +514,7 @@ ${newState.prompt ? `Original task: ${newState.prompt}` : ''}
 async function checkUltrawork(
   sessionId?: string,
   directory?: string,
-  hasIncompleteTodos?: boolean
+  _hasIncompleteTodos?: boolean
 ): Promise<PersistentModeResult | null> {
   const state = readUltraworkState(directory, sessionId);
 
@@ -493,7 +550,7 @@ async function checkUltrawork(
  * Check for incomplete todos (baseline enforcement)
  * Includes max-attempts counter to prevent infinite loops when agent is stuck
  */
-async function checkTodoContinuation(
+async function _checkTodoContinuation(
   sessionId?: string,
   directory?: string
 ): Promise<PersistentModeResult | null> {
@@ -511,7 +568,7 @@ async function checkTodoContinuation(
   const attemptCount = sessionId ? trackTodoContinuationAttempt(sessionId) : 1;
 
   // Use dynamic label based on source (Tasks vs todos)
-  const sourceLabel = result.source === 'task' ? 'Tasks' : 'todos';
+  const _sourceLabel = result.source === 'task' ? 'Tasks' : 'todos';
   const sourceLabelLower = result.source === 'task' ? 'tasks' : 'todos';
 
   if (attemptCount > MAX_TODO_CONTINUATION_ATTEMPTS) {

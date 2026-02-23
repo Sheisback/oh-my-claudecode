@@ -49,5 +49,20 @@ export declare function getOmcToolNames(options?: {
     includeNotepad?: boolean;
     includeMemory?: boolean;
     includeTrace?: boolean;
+    includeInterop?: boolean;
+}): string[];
+/**
+ * Test-only helper for deterministic category-filter verification independent of env startup state.
+ */
+export declare function _getAllToolNamesForTests(options?: {
+    includeLsp?: boolean;
+    includeAst?: boolean;
+    includePython?: boolean;
+    includeSkills?: boolean;
+    includeState?: boolean;
+    includeNotepad?: boolean;
+    includeMemory?: boolean;
+    includeTrace?: boolean;
+    includeInterop?: boolean;
 }): string[];
 //# sourceMappingURL=omc-tools-server.d.ts.map

@@ -42,6 +42,7 @@ import { compareVersions } from "../features/auto-update.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { fileURLToPath } from "url";
 
 // Persistent token snapshot for delta calculations
 let previousSnapshot: TokenSnapshot | null = null;
@@ -153,7 +154,7 @@ async function recordTokenUsage(
  *
  * @returns Analytics fields or null if no token data available
  */
-async function getTokenTrackerFallback(
+async function _getTokenTrackerFallback(
   sessionId: string,
   durationMs: number,
 ): Promise<{
@@ -350,7 +351,7 @@ async function main(): Promise<void> {
 
     // Read HUD state for background tasks
     const hudState = readHudState(cwd);
-    const backgroundTasks = hudState?.backgroundTasks || [];
+    const _backgroundTasks = hudState?.backgroundTasks || [];
 
     // Persist session start time to survive tail-parsing resets (#528)
     // When tail parsing kicks in for large transcripts, sessionStart comes from
@@ -515,5 +516,10 @@ async function main(): Promise<void> {
   }
 }
 
-// Run main
-main();
+// Export for programmatic use (e.g., omc hud --watch loop)
+export { main };
+
+// Auto-run when executed directly
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
+}

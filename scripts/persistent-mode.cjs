@@ -56,6 +56,43 @@ function writeJsonFile(path, data) {
 }
 
 /**
+ * Read the session-idle notification cooldown in seconds from ~/.omc/config.json.
+ * Default: 60. 0 = disabled.
+ */
+function getIdleCooldownSeconds() {
+  const configPath = join(homedir(), '.omc', 'config.json');
+  const config = readJsonFile(configPath);
+  const val = config?.notificationCooldown?.sessionIdleSeconds;
+  if (typeof val === 'number') return val;
+  return 60;
+}
+
+/**
+ * Check whether the session-idle cooldown has elapsed.
+ * Returns true if the notification should be sent.
+ */
+function shouldSendIdleNotification(stateDir) {
+  const cooldownSecs = getIdleCooldownSeconds();
+  if (cooldownSecs === 0) return true; // cooldown disabled
+
+  const cooldownPath = join(stateDir, 'idle-notif-cooldown.json');
+  const data = readJsonFile(cooldownPath);
+  if (data?.lastSentAt) {
+    const elapsed = (Date.now() - new Date(data.lastSentAt).getTime()) / 1000;
+    if (Number.isFinite(elapsed) && elapsed < cooldownSecs) return false;
+  }
+  return true;
+}
+
+/**
+ * Record that the session-idle notification was sent.
+ */
+function recordIdleNotificationSent(stateDir) {
+  const cooldownPath = join(stateDir, 'idle-notif-cooldown.json');
+  writeJsonFile(cooldownPath, { lastSentAt: new Date().toISOString() });
+}
+
+/**
  * Send stop notification (fire-and-forget, non-blocking).
  * Only notifies on first stop to avoid spam.
  */
@@ -576,7 +613,8 @@ async function main() {
     // No blocking needed — Claude is truly idle.
     // Send session-idle notification (fire-and-forget) so external integrations
     // (Telegram, Discord) know the session went idle without any active mode.
-    if (sessionId) {
+    // Per-session cooldown prevents notification spam when the session idles repeatedly.
+    if (sessionId && shouldSendIdleNotification(stateDir)) {
       try {
         const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
         if (pluginRoot) {
@@ -589,6 +627,7 @@ async function main() {
               }).catch(() => {})
             )
             .catch(() => {});
+          recordIdleNotificationSent(stateDir);
         }
       } catch {
         // Notification module not available, skip silently

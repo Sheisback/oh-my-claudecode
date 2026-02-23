@@ -8,12 +8,10 @@ import {
   resolveLaunchPolicy,
   buildTmuxSessionName,
   buildTmuxShellCommand,
-  quoteShellArg,
   listHudWatchPaneIdsInCurrentWindow,
   createHudWatchPane,
   killTmuxPane,
   isClaudeAvailable,
-  type ClaudeLaunchPolicy,
 } from './tmux-utils.js';
 
 // Flag mapping
@@ -109,7 +107,7 @@ export function runClaude(cwd: string, args: string[], sessionId: string): void 
 
   // Check if omc has a HUD command
   // For now, use a simple placeholder or skip HUD if not available
-  const hasHudCommand = false; // TODO: Check if omc has hud command
+  const hasHudCommand = true;
   const hudCmd = hasHudCommand ? buildTmuxShellCommand('node', [omcBin, 'hud', '--watch']) : '';
 
   switch (policy) {
@@ -152,12 +150,13 @@ function runClaudeInsideTmux(cwd: string, args: string[], hudCmd: string): void 
   try {
     execFileSync('claude', args, { cwd, stdio: 'inherit' });
   } catch (error) {
-    const err = error as NodeJS.ErrnoException;
+    const err = error as NodeJS.ErrnoException & { status?: number | null };
     if (err.code === 'ENOENT') {
       console.error('[omc] Error: claude CLI not found in PATH.');
       process.exit(1);
     }
-    // Normal exit (non-zero status codes throw in execFileSync) — ignore
+    // Propagate Claude's exit code so omc does not swallow failures
+    process.exit(typeof err.status === 'number' ? err.status : 1);
   } finally {
     // Cleanup HUD pane on exit
     if (hudPaneId) {
@@ -182,6 +181,7 @@ function runClaudeOutsideTmux(cwd: string, args: string[], _sessionId: string, h
   const tmuxArgs = [
     'new-session', '-d', '-s', sessionName, '-c', cwd,
     claudeCmd,
+    ';', 'set-option', '-g', 'mouse', 'on',
   ];
 
   // Add HUD pane if available
@@ -213,12 +213,13 @@ function runClaudeDirect(cwd: string, args: string[]): void {
   try {
     execFileSync('claude', args, { cwd, stdio: 'inherit' });
   } catch (error) {
-    const err = error as NodeJS.ErrnoException;
+    const err = error as NodeJS.ErrnoException & { status?: number | null };
     if (err.code === 'ENOENT') {
       console.error('[omc] Error: claude CLI not found in PATH.');
       process.exit(1);
     }
-    // Normal exit (non-zero status codes throw in execFileSync) — ignore
+    // Propagate Claude's exit code so omc does not swallow failures
+    process.exit(typeof err.status === 'number' ? err.status : 1);
   }
 }
 

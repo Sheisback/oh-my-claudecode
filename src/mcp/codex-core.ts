@@ -9,13 +9,13 @@
  */
 
 import { spawn } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'fs';
-import { dirname, resolve, relative, sep, isAbsolute, basename, join } from 'path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'fs';
+import { resolve, relative, sep, isAbsolute, join } from 'path';
 import { createStdoutCollector, safeWriteOutputFile } from './shared-exec.js';
 import { detectCodexCli } from './cli-detection.js';
 import { getWorktreeRoot } from '../lib/worktree-paths.js';
 import { isExternalPromptAllowed } from './mcp-config.js';
-import { resolveSystemPrompt, buildPromptWithSystemContext, wrapUntrustedFileContent, wrapUntrustedCliResponse, isValidAgentRoleName, VALID_AGENT_ROLES, singleErrorBlock, inlineSuccessBlocks } from './prompt-injection.js';
+import { resolveSystemPrompt, buildPromptWithSystemContext, wrapUntrustedCliResponse, isValidAgentRoleName, VALID_AGENT_ROLES, singleErrorBlock, inlineSuccessBlocks, validateContextFilePaths } from './prompt-injection.js';
 import { persistPrompt, persistResponse, getExpectedResponsePath, getPromptsDir, slugify, generatePromptId } from './prompt-persistence.js';
 import { writeJobStatus, getStatusFilePath, readJobStatus } from './prompt-persistence.js';
 import type { JobStatus, BackgroundJobMeta } from './prompt-persistence.js';
@@ -69,6 +69,9 @@ export type ReasoningEffort = typeof VALID_REASONING_EFFORTS[number];
 export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
 export const MAX_STDOUT_BYTES = 10 * 1024 * 1024; // 10MB stdout cap
 
+const RATE_LIMIT_OR_DISCONNECT_REGEX = /429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted|stream disconnected|transport closed|econnreset|epipe/i;
+const RETRYABLE_MODEL_OR_RATE_LIMIT_OR_DISCONNECT_REGEX = /model error|model_not_found|model is not supported|429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted|stream disconnected|transport closed|econnreset|epipe/i;
+
 /**
  * Compute exponential backoff delay with jitter for rate limit retries.
  * Returns delay in ms: min(initialDelay * 2^attempt, maxDelay) * random(0.5, 1.0)
@@ -117,8 +120,8 @@ export function isModelError(output: string): { isError: boolean; message: strin
  */
 export function isRateLimitError(output: string, stderr: string = ''): { isError: boolean; message: string } {
   const combined = `${output}\n${stderr}`;
-  // Check for 429 status codes and rate limit messages in both stdout and stderr
-  if (/429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted/i.test(combined)) {
+  // Check for 429/rate-limit and transport disconnect signatures in stdout/stderr
+  if (RATE_LIMIT_OR_DISCONNECT_REGEX.test(combined)) {
     // Extract a meaningful message
     const lines = combined.split('\n').filter(l => l.trim());
     for (const line of lines) {
@@ -126,15 +129,15 @@ export function isRateLimitError(output: string, stderr: string = ''): { isError
         const event = JSON.parse(line);
         const msg = typeof event.message === 'string' ? event.message :
                     typeof event.error?.message === 'string' ? event.error.message : '';
-        if (/429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted/i.test(msg)) {
+        if (RATE_LIMIT_OR_DISCONNECT_REGEX.test(msg)) {
           return { isError: true, message: msg };
         }
       } catch { /* check raw line */ }
-      if (/429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted/i.test(line)) {
+      if (RATE_LIMIT_OR_DISCONNECT_REGEX.test(line)) {
         return { isError: true, message: line.trim() };
       }
     }
-    return { isError: true, message: 'Rate limit error detected' };
+    return { isError: true, message: 'Retryable rate-limit/transport error detected' };
   }
   return { isError: false, message: '' };
 }
@@ -214,7 +217,7 @@ export function executeCodex(prompt: string, model: string, cwd?: string, reason
   return new Promise((resolve, reject) => {
     validateModelName(model);
     let settled = false;
-    const args = ['exec', '-m', model, '--json', '--full-auto'];
+    const args = ['exec', '-m', model, '--json', '--full-auto', '--skip-git-repo-check'];
     // Per-call reasoning effort override via Codex CLI -c flag
     if (reasoningEffort && VALID_REASONING_EFFORTS.includes(reasoningEffort)) {
       args.push('-c', `model_reasoning_effort="${reasoningEffort}"`);
@@ -322,7 +325,7 @@ export async function executeCodexWithFallback(
         return { response, usedFallback: false, actualModel: effectiveModel };
       } catch (err) {
         lastError = err as Error;
-        if (!/429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted/i.test(lastError.message)) {
+        if (!RATE_LIMIT_OR_DISCONNECT_REGEX.test(lastError.message)) {
           throw lastError; // Non-rate-limit error, throw immediately
         }
         if (attempt < RATE_LIMIT_RETRY_COUNT) {
@@ -353,11 +356,11 @@ export async function executeCodexWithFallback(
     } catch (err) {
       lastError = err as Error;
       // Retry on model errors and rate limit errors
-      if (!/model error|model_not_found|model is not supported|429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted/i.test(lastError.message)) {
+      if (!RETRYABLE_MODEL_OR_RATE_LIMIT_OR_DISCONNECT_REGEX.test(lastError.message)) {
         throw lastError; // Non-retryable error, don't retry
       }
       // Add backoff delay for rate limit errors before trying next model
-      if (/429|rate.?limit|too many requests|quota.?exceeded|resource.?exhausted/i.test(lastError.message)) {
+      if (RATE_LIMIT_OR_DISCONNECT_REGEX.test(lastError.message)) {
         const delay = computeBackoffDelay(rateLimitAttempt, RATE_LIMIT_INITIAL_DELAY, RATE_LIMIT_MAX_DELAY);
         await sleepFn(delay);
         rateLimitAttempt++;
@@ -393,7 +396,7 @@ export function executeCodexBackground(
     // Helper to try spawning with a specific model
     const trySpawnWithModel = (tryModel: string, remainingModels: string[], rateLimitAttempt: number = 0): { pid: number } | { error: string } => {
       validateModelName(tryModel);
-      const args = ['exec', '-m', tryModel, '--json', '--full-auto'];
+      const args = ['exec', '-m', tryModel, '--json', '--full-auto', '--skip-git-repo-check'];
       // Per-call reasoning effort override for background execution
       if (reasoningEffort && VALID_REASONING_EFFORTS.includes(reasoningEffort)) {
         args.push('-c', `model_reasoning_effort="${reasoningEffort}"`);
@@ -431,8 +434,13 @@ export function executeCodexBackground(
       writeJobStatus(initialStatus, workingDirectory);
 
       const collector = createStdoutCollector(MAX_STDOUT_BYTES);
+      const partialFile = jobMeta.responseFile + '.partial';
       let stderr = '';
       let settled = false;
+
+      const cleanupPartial = () => {
+        try { if (existsSync(partialFile)) unlinkSync(partialFile); } catch { /* ignore */ }
+      };
 
       const timeoutHandle = setTimeout(() => {
         if (!settled) {
@@ -445,6 +453,7 @@ export function executeCodexBackground(
           } catch {
             // ignore
           }
+          cleanupPartial();
           writeJobStatus({
             ...initialStatus,
             status: 'timeout',
@@ -456,6 +465,7 @@ export function executeCodexBackground(
 
       child.stdout?.on('data', (data: Buffer) => {
         collector.append(data.toString());
+        try { appendFileSync(partialFile, data); } catch { /* ignore */ }
       });
       child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
 
@@ -464,6 +474,7 @@ export function executeCodexBackground(
         if (settled) return;
         settled = true;
         clearTimeout(timeoutHandle);
+        cleanupPartial();
         writeJobStatus({
           ...initialStatus,
           status: 'failed',
@@ -480,6 +491,7 @@ export function executeCodexBackground(
         settled = true;
         clearTimeout(timeoutHandle);
         spawnedPids.delete(pid);
+        cleanupPartial();
         const stdout = collector.toString();
 
         // Check if user killed this job - if so, don't overwrite the killed status
@@ -640,6 +652,7 @@ export function executeCodexBackground(
         if (settled) return;
         settled = true;
         clearTimeout(timeoutHandle);
+        cleanupPartial();
         writeJobStatus({
           ...initialStatus,
           status: 'failed',
@@ -658,44 +671,6 @@ export function executeCodexBackground(
   }
 }
 
-/**
- * Validate and read a file for context inclusion
- */
-export function validateAndReadFile(filePath: string, baseDir?: string): string {
-  if (typeof filePath !== 'string') {
-    return `--- File: ${filePath} --- (Invalid path type)`;
-  }
-  try {
-    const workingDir = baseDir || process.cwd();
-    const resolvedAbs = resolve(workingDir, filePath);
-
-    // Security: ensure file is within working directory (worktree boundary)
-    const cwdReal = realpathSync(workingDir);
-
-    const relAbs = relative(cwdReal, resolvedAbs);
-    if (relAbs === '..' || relAbs.startsWith('..' + sep) || isAbsolute(relAbs)) {
-      return `[BLOCKED] File '${filePath}' is outside the working directory. Only files within the project are allowed.`;
-    }
-
-    // Symlink-safe check: ensure the real path also stays inside the boundary.
-    const resolvedReal = realpathSync(resolvedAbs);
-    const relReal = relative(cwdReal, resolvedReal);
-    if (relReal === '..' || relReal.startsWith('..' + sep) || isAbsolute(relReal)) {
-      return `[BLOCKED] File '${filePath}' is outside the working directory. Only files within the project are allowed.`;
-    }
-
-    const stats = statSync(resolvedReal);
-    if (!stats.isFile()) {
-      return `--- File: ${filePath} --- (Not a regular file)`;
-    }
-    if (stats.size > MAX_FILE_SIZE) {
-      return `--- File: ${filePath} --- (File too large: ${(stats.size / 1024 / 1024).toFixed(1)}MB, max 5MB)`;
-    }
-    return wrapUntrustedFileContent(filePath, readFileSync(resolvedReal, 'utf-8'));
-  } catch {
-    return `--- File: ${filePath} --- (Error reading file)`;
-  }
-}
 
 /**
  * Handle ask_codex tool invocation with all business logic
@@ -928,10 +903,16 @@ ${resolvedPrompt}`;
   // Resolve system prompt from agent role
   const resolvedSystemPrompt = resolveSystemPrompt(undefined, agent_role, 'codex');
 
-  // Build file context
+  // Build file context — validate paths first to prevent path traversal and prompt injection
   let fileContext: string | undefined;
   if (context_files && context_files.length > 0) {
-    fileContext = context_files.map(f => validateAndReadFile(f, baseDir)).join('\n\n');
+    const { validPaths, errors } = validateContextFilePaths(context_files, baseDirReal, isExternalPromptAllowed());
+    if (errors.length > 0) {
+      console.warn('[codex-core] context_files validation rejected paths:', errors.join('; '));
+    }
+    if (validPaths.length > 0) {
+      fileContext = `The following files are available for reference. Use your file tools to read them as needed:\n${validPaths.map(f => `- ${f}`).join('\n')}`;
+    }
   }
 
   // Combine: system prompt > file context > user prompt
@@ -985,6 +966,7 @@ ${resolvedPrompt}`;
           `**PID:** ${result.pid}`,
           `**Prompt File:** ${promptResult.filePath}`,
           `**Response File:** ${expectedResponsePath}`,
+          `**Partial Output:** ${expectedResponsePath}.partial  (tail -f to stream live)`,
           `**Status File:** ${statusFilePath}`,
           ``,
           `Job dispatched. Check response file existence or read status file for completion.`,
