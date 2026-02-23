@@ -560,7 +560,7 @@ export function generateConfigSchema() {
                             type: 'object',
                             properties: {
                                 provider: { type: 'string', enum: ['claude', 'codex', 'gemini'] },
-                                tool: { type: 'string', enum: ['Task', 'ask_codex', 'ask_gemini'] },
+                                tool: { type: 'string', enum: ['Task'] },
                                 model: { type: 'string' },
                                 agentType: { type: 'string' },
                                 fallback: { type: 'array', items: { type: 'string' } }

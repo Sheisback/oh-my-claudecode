@@ -47,8 +47,6 @@ describe('Windows HUD Platform Fixes (#739)', () => {
     const bridgeFiles = [
       'bridge/mcp-server.cjs',
       'bridge/team-bridge.cjs',
-      'bridge/codex-server.cjs',
-      'bridge/gemini-server.cjs',
     ];
 
     for (const file of bridgeFiles) {
@@ -76,8 +74,6 @@ describe('Windows HUD Platform Fixes (#739)', () => {
     const buildScripts = [
       'scripts/build-mcp-server.mjs',
       'scripts/build-bridge-entry.mjs',
-      'scripts/build-codex-server.mjs',
-      'scripts/build-gemini-server.mjs',
     ];
 
     for (const script of buildScripts) {

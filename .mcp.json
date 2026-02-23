@@ -4,13 +4,9 @@
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/bridge/mcp-server.cjs"]
     },
-    "x": {
+    "team": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/bridge/codex-server.cjs"]
-    },
-    "g": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/bridge/gemini-server.cjs"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bridge/team-mcp.cjs"]
     }
   }
 }
