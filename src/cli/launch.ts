@@ -138,7 +138,12 @@ function runClaudeInsideTmux(cwd: string, args: string[]): void {
  * Creates tmux session with Claude
  */
 function runClaudeOutsideTmux(cwd: string, args: string[], _sessionId: string): void {
-  const claudeCmd = buildTmuxShellCommand('claude', args);
+  const rawClaudeCmd = buildTmuxShellCommand('claude', args);
+  // Drain any pending terminal Device Attributes (DA1) response from stdin.
+  // When tmux attach-session sends a DA1 query, the terminal replies with
+  // \e[?6c which lands in the pty buffer before Claude reads input.
+  // A short sleep lets the response arrive, then tcflush discards it.
+  const claudeCmd = `sleep 0.3; perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null; ${rawClaudeCmd}`;
   const sessionName = buildTmuxSessionName(cwd);
 
   const tmuxArgs = [
