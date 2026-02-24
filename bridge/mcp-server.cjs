@@ -21434,7 +21434,9 @@ function getAllModeStatuses(cwd, sessionId) {
 function clearModeState(mode, cwd, sessionId) {
   const config2 = MODE_CONFIGS[mode];
   let success = true;
-  if (sessionId && !config2.isSqlite) {
+  const markerFile = getMarkerFilePath(cwd, mode);
+  const isSessionScopedClear = Boolean(sessionId && !config2.isSqlite);
+  if (isSessionScopedClear && sessionId) {
     const sessionStateFile = resolveSessionStatePath(mode, sessionId, cwd);
     if ((0, import_fs7.existsSync)(sessionStateFile)) {
       try {
@@ -21443,35 +21445,61 @@ function clearModeState(mode, cwd, sessionId) {
         success = false;
       }
     }
-    return success;
+    if (config2.markerFile) {
+      const markerStateName = config2.markerFile.replace(/\.json$/i, "");
+      const sessionMarkerFile = resolveSessionStatePath(markerStateName, sessionId, cwd);
+      if ((0, import_fs7.existsSync)(sessionMarkerFile)) {
+        try {
+          (0, import_fs7.unlinkSync)(sessionMarkerFile);
+        } catch {
+          success = false;
+        }
+      }
+    }
+    if (markerFile && (0, import_fs7.existsSync)(markerFile)) {
+      try {
+        const markerRaw = JSON.parse((0, import_fs7.readFileSync)(markerFile, "utf-8"));
+        const markerSessionId = markerRaw.session_id ?? markerRaw.sessionId;
+        if (!markerSessionId || markerSessionId === sessionId) {
+          (0, import_fs7.unlinkSync)(markerFile);
+        }
+      } catch {
+        try {
+          (0, import_fs7.unlinkSync)(markerFile);
+        } catch {
+          success = false;
+        }
+      }
+    }
   }
   const stateFile = getStateFilePath(cwd, mode);
-  if ((0, import_fs7.existsSync)(stateFile)) {
-    try {
-      (0, import_fs7.unlinkSync)(stateFile);
-    } catch {
-      success = false;
-    }
-  }
-  if (config2.isSqlite) {
-    const walFile = stateFile + "-wal";
-    const shmFile = stateFile + "-shm";
-    if ((0, import_fs7.existsSync)(walFile)) {
+  if (!isSessionScopedClear) {
+    if ((0, import_fs7.existsSync)(stateFile)) {
       try {
-        (0, import_fs7.unlinkSync)(walFile);
+        (0, import_fs7.unlinkSync)(stateFile);
       } catch {
         success = false;
       }
     }
-    if ((0, import_fs7.existsSync)(shmFile)) {
-      try {
-        (0, import_fs7.unlinkSync)(shmFile);
-      } catch {
-        success = false;
+    if (config2.isSqlite) {
+      const walFile = stateFile + "-wal";
+      const shmFile = stateFile + "-shm";
+      if ((0, import_fs7.existsSync)(walFile)) {
+        try {
+          (0, import_fs7.unlinkSync)(walFile);
+        } catch {
+          success = false;
+        }
+      }
+      if ((0, import_fs7.existsSync)(shmFile)) {
+        try {
+          (0, import_fs7.unlinkSync)(shmFile);
+        } catch {
+          success = false;
+        }
       }
     }
   }
-  const markerFile = getMarkerFilePath(cwd, mode);
   if (markerFile && (0, import_fs7.existsSync)(markerFile)) {
     try {
       (0, import_fs7.unlinkSync)(markerFile);
@@ -21502,6 +21530,7 @@ var EXECUTION_MODES = [
   "ultraqa"
 ];
 var STATE_TOOL_MODES = [...EXECUTION_MODES, "ralplan"];
+var CANCEL_SIGNAL_TTL_MS = 3e4;
 function getStatePath(mode, root) {
   if (MODE_CONFIGS[mode]) {
     return getStateFilePath(root, mode);
@@ -21781,6 +21810,15 @@ var stateClearTool = {
       const sessionId = session_id;
       if (sessionId) {
         validateSessionId(sessionId);
+        const now = Date.now();
+        const cancelSignalPath = resolveSessionStatePath("cancel-signal", sessionId, root);
+        atomicWriteJsonSync(cancelSignalPath, {
+          active: true,
+          requested_at: new Date(now).toISOString(),
+          expires_at: new Date(now + CANCEL_SIGNAL_TTL_MS).toISOString(),
+          mode,
+          source: "state_clear"
+        });
         if (MODE_CONFIGS[mode]) {
           const success = clearModeState(mode, root, sessionId);
           if (success) {

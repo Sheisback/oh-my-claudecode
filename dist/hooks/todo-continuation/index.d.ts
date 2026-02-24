@@ -76,6 +76,16 @@ export interface StopContext {
     user_requested?: boolean;
     /** Whether user explicitly requested stop - camelCase variant */
     userRequested?: boolean;
+    /** Prompt text (when available) */
+    prompt?: string;
+    /** Tool name from hook payload (snake_case) */
+    tool_name?: string;
+    /** Tool name from hook payload (camelCase) */
+    toolName?: string;
+    /** Tool input from hook payload (snake_case) */
+    tool_input?: unknown;
+    /** Tool input from hook payload (camelCase) */
+    toolInput?: unknown;
 }
 export interface TodoContinuationHook {
     checkIncomplete: (sessionId?: string) => Promise<IncompleteTodosResult>;
@@ -101,6 +111,13 @@ export interface TodoContinuationHook {
  * should be updated based on observed Claude Code behavior.
  */
 export declare function isUserAbort(context?: StopContext): boolean;
+/**
+ * Detect explicit /cancel command paths that should bypass stop-hook reinforcement.
+ *
+ * This is stricter than generic user-abort detection and is intended to prevent
+ * re-enforcement races when the user explicitly invokes /cancel or /cancel --force.
+ */
+export declare function isExplicitCancelCommand(context?: StopContext): boolean;
 /**
  * Detect if stop was triggered by context-limit related reasons.
  * When context is exhausted, Claude Code needs to stop so it can compact.

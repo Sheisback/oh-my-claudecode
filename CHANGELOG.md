@@ -1,3 +1,70 @@
+# oh-my-claudecode v4.4.2: Cross-Platform Hardening & Cancel Race Fix
+
+## Patch Notes
+
+This release hardens cross-platform hook execution, fixes a cancel re-arm race in ralph/ultrawork, and improves tmux injection safety with adaptive polling and copy-mode guards.
+
+**11 commits, 75 files changed, +2312 -222 lines**
+
+---
+
+### Features
+
+- **Win32 startup warning** (#923): CLI now displays a platform compatibility warning when running on native Windows (not WSL), informing users about potential limitations.
+- **Adaptive polling for tmux workers** (#907): New `shouldAttemptAdaptiveRetry` logic retries message delivery to busy worker panes without interrupting active turns. Includes copy-mode detection to prevent key injection when a pane is in scroll mode.
+- **Runtime/status telemetry** (#907): Team runtime emits per-cycle telemetry (`monitorMs`, `tasksMs`, `workerMs`) for diagnosing slow polling loops. `team-status` extended with richer status reporting.
+
+---
+
+### Bug Fixes
+
+- **Cancel re-arm race in ralph/ultrawork** (#921): The stop hook could re-enforce ralph/ultrawork persistence after `/cancel` was invoked but before state files were fully cleared. A new `cancel-signal` sentinel file with a 30-second TTL prevents re-arming during the cancellation window.
+- **Codex background prompt normalization** (#919, #920): Background inline prompts passed to Codex CLI are now normalized to `prompt_file` at the callsite, fixing cases where prompts with special characters were mangled or lost.
+- **`ralph-init` triggering ralph loop** (#914): The `ralph` keyword regex now uses a negative lookahead (`(?!-)`) so that `ralph-init` no longer falsely triggers the ralph persistence loop.
+- **Cross-platform hook runner** (#912): Replaced the `sh + find-node.sh` chain with a new `scripts/run.cjs` that uses `process.execPath` to spawn hook scripts. Fixes hook execution failures on Windows where `/usr/bin/sh` is unavailable, and resolves nvm/fnm node binary discovery issues (#909, #899, #892, #869).
+- **HUD `--watch` mode repeated setup error** (#911): Added a stdin cache (`hud-stdin-cache.json`) so `--watch` mode can recover HUD data when stdin becomes a TTY on subsequent iterations, preventing repeated setup errors.
+
+---
+
+### Security
+
+- **tmux copy-mode injection guard**: `sendToWorker` and `injectToLeaderPane` now check `paneInCopyMode` before every `send-keys` call, preventing unintended key injection when a tmux pane is in scroll/copy mode. Multiple guard points added throughout the send-keys retry loop.
+
+---
+
+### Testing
+
+- **Cancel race test suite** (`cancel-race.test.ts`): Validates that `isSessionCancelInProgress` correctly reads/expires cancel signals and that ralph/ultrawork checks respect the cancel window.
+- **Win32 warning test** (`cli-win32-warning.test.ts`): Verifies the platform warning renders on win32 and is suppressed on other platforms.
+- **Team bridge usage test** (`mcp-team-bridge.usage.test.ts`): End-to-end test for the MCP team bridge tool registration.
+- **Runtime assign test** (`runtime-assign.test.ts`): Tests task assignment logic in the team runtime.
+- **Improved mocks** (`team-cleanup.test.ts`): Replaced `Function` callback types with properly typed mocks.
+- **Extended coverage**: `session-isolation.test.ts`, `tmux-session.test.ts`, `team-status.test.ts`, `runtime.test.ts`, `tmux-comm.test.ts` all expanded with new test cases.
+
+---
+
+### Internal
+
+- **`scripts/run.cjs`**: New cross-platform CJS hook runner that uses `spawnSync(process.execPath, ...)` to bypass shell discovery.
+- **`hooks.json` updated**: All hook commands now use the `node + run.cjs` chain instead of `sh + find-node.sh`.
+- **`plugin-setup.mjs` improvements**: Setup script patching updated to support the new runner chain.
+- **`bridge/runtime-cli.cjs`**: +126 lines of telemetry, adaptive polling, and worker lifecycle improvements.
+- **`bridge/team-bridge.cjs`**: +181 lines of enhanced team bridge coordination.
+- **`todo-continuation`**: Added `isExplicitCancelCommand` detection for cleaner cancel handling.
+- **`mode-registry`**: Improved mode detection and session isolation logic.
+
+---
+
+### Codex Review Summary
+
+Infrastructure review (2 findings, non-blocking):
+- **Low**: Unquoted absolute node path in hook commands could theoretically break on paths with spaces on Windows.
+- **Low**: `run.cjs` exits cleanly (`process.exit(0)`) when spawn fails, which suppresses error details from Claude Code's hook output.
+
+No tmux shell injection vulnerabilities found in the hardened `sendToWorker`/`injectToLeaderPane` implementations.
+
+---
+
 # oh-my-claudecode v4.4.1: HUD hotfix
 
 ## Patch Notes

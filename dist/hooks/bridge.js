@@ -273,8 +273,24 @@ async function processRalph(input) {
     }
     // Lazy-load ralph module
     const { readRalphState, incrementRalphIteration, clearRalphState, readVerificationState, getArchitectVerificationPrompt, clearVerificationState, } = await import("./ralph/index.js");
+    const { isExplicitCancelCommand } = await import("./todo-continuation/index.js");
+    const stopContext = {
+        stop_reason: input.stop_reason,
+        stopReason: input.stopReason,
+        end_turn_reason: input.end_turn_reason,
+        endTurnReason: input.endTurnReason,
+        prompt: input.prompt,
+        tool_name: input.tool_name,
+        toolName: input.toolName,
+        tool_input: input.tool_input,
+        toolInput: input.toolInput,
+    };
+    // Explicit cancel should bypass legacy ralph-loop re-enforcement.
+    if (isExplicitCancelCommand(stopContext)) {
+        return { continue: true };
+    }
     // Read Ralph state
-    const state = readRalphState(directory);
+    const state = readRalphState(directory, sessionId);
     if (!state || !state.active) {
         return { continue: true };
     }
@@ -283,7 +299,7 @@ async function processRalph(input) {
         return { continue: true };
     }
     // Check for existing verification state (architect verification in progress)
-    const verificationState = readVerificationState(directory);
+    const verificationState = readVerificationState(directory, sessionId);
     if (verificationState?.pending) {
         // Check if architect has approved (by looking for the tag in transcript)
         // This is handled more thoroughly in persistent-mode hook
@@ -296,15 +312,15 @@ async function processRalph(input) {
     }
     // Check max iterations
     if (state.iteration >= state.max_iterations) {
-        clearRalphState(directory);
-        clearVerificationState(directory);
+        clearRalphState(directory, sessionId);
+        clearVerificationState(directory, sessionId);
         return {
             continue: true,
             message: `[RALPH LOOP STOPPED] Max iterations (${state.max_iterations}) reached without completion.`,
         };
     }
     // Increment and continue
-    const newState = incrementRalphIteration(directory);
+    const newState = incrementRalphIteration(directory, sessionId);
     if (!newState) {
         return { continue: true };
     }
@@ -338,8 +354,15 @@ async function processPersistentMode(input) {
     const stopContext = {
         stop_reason: input.stop_reason,
         stopReason: input.stopReason,
+        end_turn_reason: input.end_turn_reason,
+        endTurnReason: input.endTurnReason,
         user_requested: input.user_requested,
         userRequested: input.userRequested,
+        prompt: input.prompt,
+        tool_name: input.tool_name,
+        toolName: input.toolName,
+        tool_input: input.tool_input,
+        toolInput: input.toolInput,
     };
     const result = await checkPersistentModes(sessionId, directory, stopContext);
     const output = createHookOutput(result);

@@ -13,7 +13,7 @@ import { classifyTaskSize, isHeavyMode, } from '../task-size-detector/index.js';
  */
 const KEYWORD_PATTERNS = {
     cancel: /\b(cancelomc|stopomc)\b/i,
-    ralph: /\b(ralph)\b/i,
+    ralph: /\b(ralph)\b(?!-)/i,
     autopilot: /\b(autopilot|auto[\s-]?pilot|fullsend|full\s+auto)\b/i,
     ultrapilot: /\b(ultrapilot|ultra-pilot)\b|\bparallel\s+build\b|\bswarm\s+build\b/i,
     ultrawork: /\b(ultrawork|ulw)\b/i,
