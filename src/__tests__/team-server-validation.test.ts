@@ -106,7 +106,7 @@ describe('validateJobId', () => {
 // ---------------------------------------------------------------------------
 
 describe('team-server handler validation integration', () => {
-  const SOURCE_PATH = path.resolve(__dirname, '../../mcp/team-server.ts');
+  const SOURCE_PATH = path.resolve(__dirname, '../mcp/team-server.ts');
 
   it('production validateJobId regex matches test regex', async () => {
     const nodeFs = (await vi.importActual('fs')) as typeof import('fs');
