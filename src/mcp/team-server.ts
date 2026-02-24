@@ -163,6 +163,7 @@ async function handleStart(args: unknown): Promise<{ content: Array<{ type: 'tex
 
 async function handleStatus(args: unknown): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   const { job_id } = statusSchema.parse(args);
+  validateJobId(job_id);
   const job = omcTeamJobs.get(job_id) ?? loadJobFromDisk(job_id);
   if (!job) {
     return { content: [{ type: 'text', text: JSON.stringify({ error: `No job found: ${job_id}` }) }] };
@@ -176,6 +177,7 @@ async function handleStatus(args: unknown): Promise<{ content: Array<{ type: 'te
 
 async function handleWait(args: unknown): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   const { job_id, timeout_ms = 300_000 } = waitSchema.parse(args);
+  validateJobId(job_id);
   // Cap at 1 hour — matches Codex/Gemini wait_for_job behaviour
   const deadline = Date.now() + Math.min(timeout_ms, 3_600_000);
   let pollDelay = 500; // ms; grows to 2000ms via 1.5× backoff
