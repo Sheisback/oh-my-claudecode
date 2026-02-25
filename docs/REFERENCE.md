@@ -236,8 +236,8 @@ Always use `oh-my-claudecode:` prefix when calling via Task tool.
 | `ralph` | Self-referential development until completion | `/oh-my-claudecode:ralph` |
 | `ralph-init` | Initialize PRD for structured task tracking | `/oh-my-claudecode:ralph-init` |
 | `ultraqa` | Autonomous QA cycling workflow | `/oh-my-claudecode:ultraqa` |
-| `plan` | Start planning session | `/oh-my-claudecode:plan` |
-| `ralplan` | Iterative planning (Planner+Architect+Critic) | `/oh-my-claudecode:ralplan` |
+| `plan` | Start planning session (consensus mode uses RALPLAN-DR structured deliberation) | `/oh-my-claudecode:plan` |
+| `ralplan` | Iterative planning (Planner+Architect+Critic) with structured deliberation; short mode default, `--deliberate` for high-risk pre-mortem + expanded test plan | `/oh-my-claudecode:ralplan` |
 | `review` | Review work plans with critic | `/oh-my-claudecode:review` |
 
 ### Enhancement Skills
@@ -291,8 +291,8 @@ All skills are available as slash commands with the prefix `/oh-my-claudecode:`.
 | `/oh-my-claudecode:ralph-init <task>` | Initialize PRD for structured task tracking |
 | `/oh-my-claudecode:ralph <task>` | Self-referential loop until task completion |
 | `/oh-my-claudecode:ultraqa <goal>` | Autonomous QA cycling workflow |
-| `/oh-my-claudecode:plan <description>` | Start planning session |
-| `/oh-my-claudecode:ralplan <description>` | Iterative planning with consensus |
+| `/oh-my-claudecode:plan <description>` | Start planning session (supports consensus structured deliberation) |
+| `/oh-my-claudecode:ralplan <description>` | Iterative planning with consensus structured deliberation (`--deliberate` for high-risk mode) |
 | `/oh-my-claudecode:review [plan-path]` | Review a plan with critic |
 | `/oh-my-claudecode:deepsearch <query>` | Thorough multi-strategy codebase search |
 | `/oh-my-claudecode:deepinit [path]` | Index codebase with hierarchical AGENTS.md files |
@@ -426,7 +426,7 @@ Just include these words anywhere in your prompt to activate enhanced modes:
 | `ultrapilot`, `parallel build`, `swarm build` | Parallel autopilot (3-5x faster) |
 | `ralph`, `don't stop`, `must complete` | Persistence until verified complete |
 | `plan this`, `plan the` | Planning interview workflow |
-| `ralplan` | Iterative planning consensus |
+| `ralplan` | Iterative planning consensus with structured deliberation (`--deliberate` for high-risk mode) |
 | `search`, `find`, `locate` | Enhanced search mode |
 | `analyze`, `investigate`, `debug` | Deep analysis mode |
 | `sciomc` | Parallel research orchestration |
