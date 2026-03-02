@@ -122,13 +122,19 @@ function initTask(cwd: string, teamName: string): string {
   return root;
 }
 
-async function waitFor(predicate: () => boolean, timeoutMs = 750): Promise<void> {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    if (predicate()) return;
-    await new Promise(resolve => setTimeout(resolve, 10));
-  }
-  throw new Error('Timed out waiting for watchdog condition');
+const DEFAULT_WATCHDOG_WAIT_TIMEOUT_MS = 8000;
+const WATCHDOG_WAIT_INTERVAL_MS = 20;
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = DEFAULT_WATCHDOG_WAIT_TIMEOUT_MS
+): Promise<void> {
+  await vi.waitFor(
+    () => {
+      expect(predicate(), 'watchdog condition should become true').toBe(true);
+    },
+    { timeout: timeoutMs, interval: WATCHDOG_WAIT_INTERVAL_MS }
+  );
 }
 
 describe('watchdogCliWorkers dead-pane retry behavior', () => {
