@@ -38,6 +38,16 @@ autopilot: build a REST API for managing tasks
 
 That's it. Everything else is automatic.
 
+### Not Sure Where to Start?
+
+If you're uncertain about requirements, have a vague idea, or want to micromanage the design:
+
+```
+/deep-interview "I want to build a task management app"
+```
+
+The deep interview uses Socratic questioning to clarify your thinking before any code is written. It exposes hidden assumptions and measures clarity across weighted dimensions, ensuring you know exactly what to build before execution begins.
+
 ## Team Mode (Recommended)
 
 Starting in **v4.1.7**, **Team** is the canonical orchestration surface in OMC. Legacy entrypoints like **swarm** and **ultrapilot** are still supported, but they now **route to Team under the hood**.
@@ -175,6 +185,7 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `ulw` | Maximum parallelism | `ulw fix all errors` |
 | `plan` | Planning interview | `plan the API` |
 | `ralplan` | Iterative planning consensus | `ralplan this feature` |
+| `deep-interview` | Socratic requirements clarification | `deep-interview "vague idea"` |
 | `swarm` | Legacy keyword (routes to Team) | `swarm 5 agents: fix lint errors` |
 | `ultrapilot` | Legacy keyword (routes to Team) | `ultrapilot: build a fullstack app` |
 

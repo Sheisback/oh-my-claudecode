@@ -4,6 +4,7 @@
 
 | If you want... | Use this | Keyword |
 |----------------|----------|---------|
+| Clarify vague requirements first | `deep-interview` | "deep interview", "ouroboros", "don't assume" |
 | Full autonomous build from idea | `autopilot` | "autopilot", "build me", "I want a" |
 | Parallel autonomous (3-5x faster) | `ultrapilot` | "ultrapilot", "parallel build" |
 | Persistence until verified done | `ralph` | "ralph", "don't stop" |
@@ -11,9 +12,11 @@
 | Cost-efficient execution | `` (modifier) | "eco", "budget" |
 | Many similar independent tasks | `swarm` | "swarm N agents" |
 
-## If You're Confused
+## If You're Confused or Uncertain
 
-**Start with `autopilot`** - it handles most scenarios and transitions to other modes automatically.
+**Don't know what you don't know?** Start with `/deep-interview` - it uses Socratic questioning to clarify vague ideas, expose hidden assumptions, and measure clarity before any code is written.
+
+**Already have a clear idea?** Start with `autopilot` - it handles most scenarios and transitions to other modes automatically.
 
 ## Detailed Decision Flowchart
 
