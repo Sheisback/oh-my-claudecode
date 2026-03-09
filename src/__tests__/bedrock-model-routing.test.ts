@@ -41,9 +41,6 @@ const BEDROCK_ENV_KEYS = [
   'OMC_ROUTING_ENABLED',
 ] as const;
 
-/** Bedrock model ID pattern (same regex as models.ts isBedrock) */
-const BEDROCK_MODEL_PATTERN = /^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i;
-
 function saveAndClear(): Record<string, string | undefined> {
   const saved: Record<string, string | undefined> = {};
   for (const key of BEDROCK_ENV_KEYS) {

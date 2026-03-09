@@ -37,8 +37,6 @@ const BEDROCK_ENV_KEYS = [
     'OMC_ROUTING_FORCE_INHERIT',
     'OMC_ROUTING_ENABLED',
 ];
-/** Bedrock model ID pattern (same regex as models.ts isBedrock) */
-const BEDROCK_MODEL_PATTERN = /^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i;
 function saveAndClear() {
     const saved = {};
     for (const key of BEDROCK_ENV_KEYS) {
